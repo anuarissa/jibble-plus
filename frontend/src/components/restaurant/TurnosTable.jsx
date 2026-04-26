@@ -7,7 +7,7 @@ import {
   isoWeekKey, semanaAnteriorKey, DIAS_LABEL,
   getDefaultParaDia, normalizarCelda, esExcepcion, tipoExcepcion, contarCambios,
 } from '../../utils/turnos'
-import { descargarTemplateTurnos, parseExcelTurnos } from '../../utils/excel-turnos'
+import { descargarTemplateTurnos, parseExcelTurnosAuto } from '../../utils/excel-turnos'
 
 export function TurnosTable({ group, empleados, schedules, cfg }) {
   const [offset, setOffset] = useState(0)
@@ -50,16 +50,29 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
     if (!file) return
     e.target.value = ''
     try {
-      const result = await parseExcelTurnos(file, empleados)
-      if (Object.keys(result.aplicar).length === 0) {
-        toast.error('No se pudo aplicar ninguna fila. Revisa el formato del archivo.')
-      } else {
-        cfg.setTurnosSemana(weekKey, result.aplicar)
-        const msg = `${result.celdasOk} turnos cargados${result.celdasIgnoradas > 0 ? ` · ${result.celdasIgnoradas} ignorados` : ''}`
-        toast.success(msg)
+      const result = await parseExcelTurnosAuto(file, empleados, weekKey)
+      const semanasAplicar = Object.entries(result.aplicarPorSemana || {})
+      if (semanasAplicar.length === 0 || result.celdasOk === 0) {
+        toast.error('No se pudo aplicar ninguna celda. Revisa el formato.')
+        return
+      }
+      // Aplicar cada semana por separado (puede ser una o varias)
+      for (const [wk, datos] of semanasAplicar) {
+        cfg.setTurnosSemana(wk, datos)
+      }
+      const formatoLabel = result.formato === 'anuar' ? '(formato planilla)' : '(template)'
+      const semsLabel = semanasAplicar.length > 1 ? ` en ${semanasAplicar.length} semanas` : ''
+      toast.success(`${result.celdasOk} turnos cargados${semsLabel} ${formatoLabel}`, { duration: 5000 })
+      if (semanasAplicar.length > 1) {
+        const wks = semanasAplicar.map(([w]) => w).join(', ')
+        toast.message(`Semanas: ${wks}`, { duration: 6000 })
       }
       if (result.warnings.length > 0) {
-        result.warnings.forEach(w => toast.warning(w, { duration: 6000 }))
+        result.warnings.slice(0, 5).forEach(w => toast.warning(w, { duration: 6000 }))
+        if (result.warnings.length > 5) {
+          toast.message(`+ ${result.warnings.length - 5} avisos más en consola`, { duration: 4000 })
+          result.warnings.forEach(w => console.warn('[Excel import]', w))
+        }
       }
     } catch (err) {
       toast.error('Error leyendo Excel: ' + err.message)
