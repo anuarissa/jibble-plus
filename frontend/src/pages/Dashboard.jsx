@@ -31,6 +31,7 @@ export default function Dashboard({ cfg }) {
         condonaciones: cfg.condonaciones,
         settings: cfg.config.settings,
         turnos: cfg.turnos,
+        personOverrides: cfg.personOverrides,
       }
     : null
 

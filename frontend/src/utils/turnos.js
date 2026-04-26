@@ -1,6 +1,13 @@
 // Helpers para turnos rotativos por semana.
+//
 // Storage shape (en localStorage.jibble_turnos_v1):
-//   { [weekKey]: { [personId]: { [dow: 1..7]: { startTime, endTime } | "OFF" } } }
+//   { [weekKey]: { [personId]: { [dow: 1..7]: Celda } } }
+//
+// Celda puede ser:
+//   - { startTime, endTime, nota?: string }  — turno explícito
+//   - { tipo: "OFF", nota?: string }         — día libre explícito (cambio respecto al default)
+//   - "OFF"                                   — formato legacy, equivalente a { tipo:"OFF" }
+//   - null/undefined                          — usar el default del empleado para ese día
 
 import { getISOWeek, getISOWeekYear, parseISO, addDays, startOfISOWeek } from 'date-fns'
 
@@ -37,38 +44,126 @@ export function semanaAnteriorKey(weekKey) {
   return isoWeekKey(lunAnterior)
 }
 
-// Resuelve el turno efectivo para (semana, persona, día):
-//   - Si hay turno custom en esa celda → lo devuelve
-//   - "OFF" → null (no debe trabajar)
-//   - Si no, fallback al schedule fijo (si esos días incluyen el dow)
-//   - Si tampoco, null
-export function getTurnoEfectivo(turnos, weekKey, personId, dow, schedule) {
-  const celda = turnos?.[weekKey]?.[personId]?.[String(dow)]
-  if (celda === 'OFF') return null
-  if (celda && typeof celda === 'object' && celda.startTime && celda.endTime) {
-    return { startTime: celda.startTime, endTime: celda.endTime }
+// Normaliza el shape de una celda. Devuelve uno de:
+//   { startTime, endTime, nota? }    → trabajo explícito
+//   { tipo: 'OFF', nota? }            → libre explícito
+//   { tipo: 'default', nota }         → sin valor explícito (usa default) pero con nota
+//   null                              → vacío total
+export function normalizarCelda(raw) {
+  if (raw == null) return null
+  if (raw === 'OFF') return { tipo: 'OFF' }
+  if (typeof raw === 'object') {
+    if (raw.tipo === 'OFF') return { tipo: 'OFF', ...(raw.nota ? { nota: raw.nota } : {}) }
+    if (raw.tipo === 'default') return raw.nota ? { tipo: 'default', nota: raw.nota } : null
+    if (raw.startTime && raw.endTime) {
+      const out = { startTime: raw.startTime, endTime: raw.endTime }
+      if (raw.nota) out.nota = raw.nota
+      return out
+    }
   }
-  // Fallback al schedule fijo del empleado
+  return null
+}
+
+// Default por día del empleado.
+// Prioridad: defaultWeek (override usuario) > schedule legacy (todos los días iguales) > null.
+// Devuelve { startTime, endTime } | { tipo:'OFF' } | null.
+export function getDefaultParaDia(personId, dow, personOverrides, schedule) {
+  const dw = personOverrides?.[personId]?.defaultWeek
+  if (dw) {
+    const c = normalizarCelda(dw[String(dow)])
+    if (c) return c
+    return null // defaultWeek presente pero el día no está definido → sin default
+  }
   if (schedule?.daysOfWeek?.includes(dow) && schedule.startTime && schedule.endTime) {
     return { startTime: schedule.startTime, endTime: schedule.endTime }
   }
   return null
 }
 
+// True si la celda explícita representa un cambio respecto al default.
+//   - tipo:'default' (solo nota, sin valor) → no es excepción
+//   - sin default y celda OFF → no es cambio real (nada que cubrir)
+export function esExcepcion(celdaExplicita, defaultParaDia) {
+  const c = normalizarCelda(celdaExplicita)
+  const d = defaultParaDia
+  if (!c && !d) return false
+  if (!c || c.tipo === 'default') return false
+  if (!d) return c.tipo !== 'OFF' // celda OFF sin default → no es cambio
+  if (c.tipo === 'OFF' && d.tipo === 'OFF') return false
+  if (c.tipo === 'OFF' || d.tipo === 'OFF') return true
+  return c.startTime !== d.startTime || c.endTime !== d.endTime
+}
+
+// Tipo de cambio para mostrar badge: 'cambio-horario' | 'cambio-off' | 'cubre' | null
+export function tipoExcepcion(celdaExplicita, defaultParaDia) {
+  const c = normalizarCelda(celdaExplicita)
+  const d = defaultParaDia
+  if (!c || c.tipo === 'default') return null
+  if (c.tipo === 'OFF' && d && d.tipo !== 'OFF') return 'cambio-off'
+  if (c.startTime && (!d || d.tipo === 'OFF')) return 'cubre'
+  if (c.startTime && d?.startTime && (c.startTime !== d.startTime || c.endTime !== d.endTime)) return 'cambio-horario'
+  return null
+}
+
+// Resuelve el turno efectivo para (semana, persona, día) considerando default.
+// Devuelve { startTime, endTime, fuente: 'turno'|'default' } | null.
+export function getTurnoEfectivo(turnos, weekKey, personId, dow, schedule, personOverrides = {}) {
+  const celda = normalizarCelda(turnos?.[weekKey]?.[personId]?.[String(dow)])
+  if (celda?.tipo === 'OFF') return null
+  if (celda?.startTime) {
+    return { startTime: celda.startTime, endTime: celda.endTime, fuente: 'turno' }
+  }
+  // celda con tipo:'default' o null → usar default
+  const def = getDefaultParaDia(personId, dow, personOverrides, schedule)
+  if (def?.tipo === 'OFF') return null
+  if (def?.startTime) return { startTime: def.startTime, endTime: def.endTime, fuente: 'default' }
+  return null
+}
+
 // Para fichaje específico, retorna la hora programada en formato "HH:MM" o null
-export function getProgramadoParaFichaje(turnos, schedule, fichaje) {
+export function getProgramadoParaFichaje(turnos, schedule, fichaje, personOverrides = {}) {
   if (!fichaje?.date) return null
   const wk = isoWeekKey(fichaje.date)
   const dow = dayOfWeek(fichaje.date)
-  const turno = getTurnoEfectivo(turnos, wk, fichaje.personId, dow, schedule)
+  const turno = getTurnoEfectivo(turnos, wk, fichaje.personId, dow, schedule, personOverrides)
   return turno?.startTime ?? null
+}
+
+// Cuenta cambios respecto al default para los empleados de una semana.
+// Devuelve [{ personId, fullName, dow, default, celda, tipo, nota? }]
+export function contarCambios(semanaTurnos, empleados, schedules, personOverrides = {}) {
+  const cambios = []
+  if (!semanaTurnos) return cambios
+  for (const emp of empleados) {
+    const sched = schedules?.find(s => s.personId === emp.id)
+    const personDays = semanaTurnos[emp.id] || {}
+    for (let dow = 1; dow <= 7; dow++) {
+      const celda = personDays[String(dow)]
+      const def = getDefaultParaDia(emp.id, dow, personOverrides, sched)
+      if (esExcepcion(celda, def)) {
+        const norm = normalizarCelda(celda)
+        cambios.push({
+          personId: emp.id,
+          fullName: emp.fullName,
+          dow,
+          defaultDia: def,
+          celda: norm,
+          tipo: tipoExcepcion(celda, def),
+          nota: norm?.nota || null,
+        })
+      }
+    }
+  }
+  return cambios
 }
 
 // Convierte celda almacenada a string para mostrar/exportar.
 // "08:00-16:00" | "OFF" | ""
 export function turnoToText(celda) {
-  if (celda === 'OFF') return 'OFF'
-  if (celda?.startTime && celda?.endTime) return `${celda.startTime}-${celda.endTime}`
+  const c = normalizarCelda(celda)
+  if (!c) return ''
+  if (c.tipo === 'OFF') return 'OFF'
+  if (c.startTime && c.endTime) return `${c.startTime}-${c.endTime}`
   return ''
 }
 

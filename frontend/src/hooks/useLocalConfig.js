@@ -125,9 +125,33 @@ export function useLocalConfig() {
     }))
   }, [])
 
+  // === HORARIO DEFAULT POR DÍA (defaultWeek) ===
+  // Permite definir distinto horario para cada día (Lun..Dom). Prevalece sobre schedule legacy.
+  // valor: { startTime, endTime } | { tipo: 'OFF' } | null (limpiar ese día)
+  const setDefaultDia = useCallback((personId, dow, valor) => {
+    setPersonOverridesState(prev => {
+      const ov = { ...(prev[personId] || {}) }
+      const dw = { ...(ov.defaultWeek || {}) }
+      if (valor == null) delete dw[String(dow)]
+      else dw[String(dow)] = valor
+      // Si quedó vacío, eliminar defaultWeek para volver al schedule legacy
+      ov.defaultWeek = Object.keys(dw).length > 0 ? dw : undefined
+      return { ...prev, [personId]: ov }
+    })
+  }, [])
+
+  // Borra el defaultWeek de un empleado (vuelve a usar el schedule legacy)
+  const clearDefaultWeek = useCallback((personId) => {
+    setPersonOverridesState(prev => {
+      const ov = { ...(prev[personId] || {}) }
+      delete ov.defaultWeek
+      return { ...prev, [personId]: ov }
+    })
+  }, [])
+
   // === TURNOS ROTATIVOS ===
   // weekKey = "2026-W17" (ISO week). dow = 1..7 (lun..dom)
-  // valor = { startTime: "08:00", endTime: "16:00" } | "OFF" | null (sin turno → fallback)
+  // valor = { startTime, endTime, nota? } | { tipo: 'OFF', nota? } | "OFF" (legacy) | null
   const setTurnoCelda = useCallback((weekKey, personId, dow, valor) => {
     setTurnos(prev => {
       const week = { ...(prev[weekKey] || {}) }
@@ -136,6 +160,39 @@ export function useLocalConfig() {
         delete personDays[String(dow)]
       } else {
         personDays[String(dow)] = valor
+      }
+      week[personId] = personDays
+      return { ...prev, [weekKey]: week }
+    })
+  }, [])
+
+  // Setear/borrar nota de una celda preservando el resto de campos
+  const setNotaCelda = useCallback((weekKey, personId, dow, nota) => {
+    setTurnos(prev => {
+      const week = { ...(prev[weekKey] || {}) }
+      const personDays = { ...(week[personId] || {}) }
+      const raw = personDays[String(dow)]
+      let next
+      // Si la celda no existe explícita y se quiere agregar nota, marcamos como "default con nota"
+      // usando el shape { tipo:'default', nota } no es estándar — preferimos no permitir nota sin valor
+      if (raw == null) {
+        // Sin valor explícito: si nos piden setear nota, creamos celda placeholder con tipo:'default'
+        if (nota) personDays[String(dow)] = { tipo: 'default', nota }
+        else return prev
+      } else if (raw === 'OFF') {
+        next = { tipo: 'OFF' }
+        if (nota) next.nota = nota
+        personDays[String(dow)] = next
+      } else if (typeof raw === 'object') {
+        next = { ...raw }
+        if (nota) next.nota = nota
+        else delete next.nota
+        // Si era una celda { tipo:'default', nota } y se borra la nota → quitar la celda
+        if (next.tipo === 'default' && !next.nota) {
+          delete personDays[String(dow)]
+        } else {
+          personDays[String(dow)] = next
+        }
       }
       week[personId] = personDays
       return { ...prev, [weekKey]: week }
@@ -207,8 +264,11 @@ export function useLocalConfig() {
     setPersonCargo,
     setPersonData,
     setPersonHidden,
+    setDefaultDia,
+    clearDefaultWeek,
     clearPersonOverride,
     setTurnoCelda,
+    setNotaCelda,
     setTurnosSemana,
     copiarTurnosDesdeAnterior,
     condonar,

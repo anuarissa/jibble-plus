@@ -28,6 +28,7 @@ export default function Comparison({ cfg }) {
         schedules: data.schedules, active: data.active,
         tarifas: tarifasResolved, condonaciones: cfg.condonaciones, settings: cfg.config.settings,
         turnos: cfg.turnos,
+        personOverrides: cfg.personOverrides,
       })
       const customConfig = cfg.config.locales[g.id]
       return {
@@ -48,7 +49,7 @@ export default function Comparison({ cfg }) {
       const ini = addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), w * 7)
       const fin = addDays(ini, 6)
       const semana = attendanceEnRango(data.attendance, ini, fin)
-      const tardanzas = tardanzasConCondonacion(data.attendance, data.schedules, cfg.condonaciones, ini, fin, cfg.turnos)
+      const tardanzas = tardanzasConCondonacion(data.attendance, data.schedules, cfg.condonaciones, ini, fin, cfg.turnos, cfg.personOverrides)
       const row = { semana: `S${w >= 0 ? '0' : w}` === 'S00' ? 'Esta' : `Sem ${w}`, _ini: ini }
       for (const g of data.groups) {
         const fLocal = semana.filter(a => a.groupId === g.id).length

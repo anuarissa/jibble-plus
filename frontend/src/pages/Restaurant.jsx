@@ -89,6 +89,7 @@ export default function Restaurant({ cfg }) {
           schedules={data.schedules}
           condonaciones={cfg.condonaciones}
           turnos={cfg.turnos}
+          personOverrides={cfg.personOverrides}
         />
       )}
       {tab === 'turnos' && (

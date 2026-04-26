@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { X, Save, EyeOff, Trash2, Calendar, DollarSign, Tag } from 'lucide-react'
+import { X, Save, EyeOff, Trash2, Calendar, DollarSign, Tag, ChevronDown, ChevronRight, Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { Avatar } from '../ui/Avatar'
 import { formatBs } from '../../utils/format'
 import { EMPLOYEE_OVERRIDES } from '../../config/employees'
+import { DIAS_LABEL, DIAS_LARGO } from '../../utils/turnos'
 
 const DAYS = [
   { dow: 1, label: 'Lun' },
@@ -39,6 +40,21 @@ export function EditEmployeeModal({ persona, groups, locales, cfg, onClose }) {
   const [endTime, setEndTime] = useState(baseSched.endTime)
   const [daysOfWeek, setDaysOfWeek] = useState(baseSched.daysOfWeek || [1, 2, 3, 4, 5])
 
+  // Horario distinto por día (defaultWeek)
+  const [usarPorDia, setUsarPorDia] = useState(!!userOv.defaultWeek)
+  const [defaultWeek, setDefaultWeek] = useState(() => {
+    // Si ya tiene defaultWeek lo cargamos; sino, derivamos uno desde el horario base como punto de partida
+    if (userOv.defaultWeek) return { ...userOv.defaultWeek }
+    const init = {}
+    for (const dow of (baseSched.daysOfWeek || [])) {
+      init[String(dow)] = { startTime: baseSched.startTime, endTime: baseSched.endTime }
+    }
+    for (let dow = 1; dow <= 7; dow++) {
+      if (!init[String(dow)]) init[String(dow)] = { tipo: 'OFF' }
+    }
+    return init
+  })
+
   // Cuando cambia sueldo mensual, sugerimos tarifa = sueldo / (30 × horasDia)
   useEffect(() => {
     const sm = parseFloat(sueldoMensual)
@@ -71,10 +87,26 @@ export function EditEmployeeModal({ persona, groups, locales, cfg, onClose }) {
         expectedHoursPerDay: horasDia,
         expectedHoursPerWeek,
       },
+      defaultWeek: usarPorDia ? defaultWeek : null,
     }
     cfg.setPersonData(personId, patch)
     toast.success(`Datos de ${persona.fullName} guardados`)
     onClose()
+  }
+
+  function setDefaultDay(dow, valor) {
+    setDefaultWeek(prev => ({ ...prev, [String(dow)]: valor }))
+  }
+  function copiarDiaAnterior(dow) {
+    if (dow <= 1) return
+    setDefaultWeek(prev => ({ ...prev, [String(dow)]: prev[String(dow - 1)] }))
+  }
+  function aplicarATodos(start, end) {
+    const next = {}
+    for (let d = 1; d <= 7; d++) {
+      next[String(d)] = { startTime: start, endTime: end }
+    }
+    setDefaultWeek(next)
   }
 
   function handleHide() {
@@ -161,6 +193,89 @@ export function EditEmployeeModal({ persona, groups, locales, cfg, onClose }) {
               {daysOfWeek.length} días/semana × {(horasDiaCalc(startTime, endTime) || 0).toFixed(1)}h = <strong>{(daysOfWeek.length * (horasDiaCalc(startTime, endTime) || 0)).toFixed(1)}h/semana</strong>
             </p>
           </div>
+        </div>
+
+        <div className="border-t border-white/5 pt-5 mb-5">
+          <button
+            type="button"
+            onClick={() => setUsarPorDia(v => !v)}
+            className="flex items-center gap-2 text-sm font-medium text-ink-100 hover:text-accent transition w-full"
+          >
+            {usarPorDia ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <span>Horario distinto por día</span>
+            {usarPorDia && <span className="badge bg-accent/20 text-accent text-[10px]">activo</span>}
+            <span className="text-xs text-ink-400 ml-auto font-normal">
+              {usarPorDia ? 'Override del horario base' : 'Usa el horario base de arriba'}
+            </span>
+          </button>
+
+          {usarPorDia && (
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-end gap-2 mb-1">
+                <button
+                  type="button"
+                  onClick={() => aplicarATodos(startTime, endTime)}
+                  className="btn-ghost text-xs"
+                  title="Llena todos los días con el horario base de arriba"
+                >
+                  <Copy size={12} /> Aplicar {startTime}-{endTime} a todos
+                </button>
+              </div>
+              {DAYS.map((d, idx) => {
+                const v = defaultWeek[String(d.dow)]
+                const isOff = v?.tipo === 'OFF'
+                const sT = (v && !isOff) ? v.startTime || '' : ''
+                const eT = (v && !isOff) ? v.endTime || '' : ''
+                return (
+                  <div key={d.dow} className="flex items-center gap-2 bg-bg-700/40 rounded-lg p-2">
+                    <span className="w-12 text-xs font-medium text-ink-200">{DIAS_LARGO[idx].slice(0, 3)}</span>
+                    {!isOff && (
+                      <>
+                        <input
+                          type="time"
+                          value={sT}
+                          onChange={e => setDefaultDay(d.dow, { startTime: e.target.value, endTime: eT || e.target.value })}
+                          className="bg-bg-700 border border-white/5 rounded-md px-2 py-1 text-xs text-ink-50 focus:outline-none focus:ring-1 focus:ring-accent/40 font-mono w-24"
+                        />
+                        <span className="text-ink-400 text-xs">→</span>
+                        <input
+                          type="time"
+                          value={eT}
+                          onChange={e => setDefaultDay(d.dow, { startTime: sT || e.target.value, endTime: e.target.value })}
+                          className="bg-bg-700 border border-white/5 rounded-md px-2 py-1 text-xs text-ink-50 focus:outline-none focus:ring-1 focus:ring-accent/40 font-mono w-24"
+                        />
+                      </>
+                    )}
+                    {isOff && (
+                      <span className="text-xs text-ink-300 italic flex-1">Día libre</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setDefaultDay(d.dow, isOff ? { startTime: '08:00', endTime: '16:00' } : { tipo: 'OFF' })}
+                      className={`text-[10px] px-2 py-1 rounded font-medium transition ${
+                        isOff ? 'bg-bg-600 text-ink-200 hover:bg-bg-500' : 'bg-idle/30 text-ink-300 hover:bg-idle/50'
+                      }`}
+                    >
+                      {isOff ? 'Activar' : 'OFF'}
+                    </button>
+                    {idx > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => copiarDiaAnterior(d.dow)}
+                        className="text-ink-400 hover:text-ink-100 transition p-1"
+                        title="Copiar horario del día anterior"
+                      >
+                        <Copy size={12} />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+              <p className="text-xs text-ink-400 mt-2">
+                Este horario se usa como base en cada semana. Si necesitas cambiarlo en una semana puntual, edita esa celda en la pestaña Turnos del local.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2 justify-between">

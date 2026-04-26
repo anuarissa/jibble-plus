@@ -18,7 +18,7 @@ const colorState = {
   idle: 'bg-idle/30',
 }
 
-export function AttendanceTable({ empleados, attendance, schedules, condonaciones, turnos }) {
+export function AttendanceTable({ empleados, attendance, schedules, condonaciones, turnos, personOverrides }) {
   const [modo, setModo] = useState('semana')
   const [offset, setOffset] = useState(0) // significado depende del modo
 
@@ -59,15 +59,15 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
 
       {modo === 'dia' && (
         <DiaView empleados={empleados} attendance={attendance} schedules={schedules}
-                 condonaciones={condonaciones} turnos={turnos} offset={offset} />
+                 condonaciones={condonaciones} turnos={turnos} personOverrides={personOverrides} offset={offset} />
       )}
       {modo === 'semana' && (
         <SemanaView empleados={empleados} attendance={attendance} schedules={schedules}
-                    condonaciones={condonaciones} turnos={turnos} offset={offset} />
+                    condonaciones={condonaciones} turnos={turnos} personOverrides={personOverrides} offset={offset} />
       )}
       {modo === 'mes' && (
         <MesView empleados={empleados} attendance={attendance} schedules={schedules}
-                 condonaciones={condonaciones} turnos={turnos} offset={offset} />
+                 condonaciones={condonaciones} turnos={turnos} personOverrides={personOverrides} offset={offset} />
       )}
 
       <div className="flex items-center gap-4 mt-5 pt-4 border-t border-white/5 text-xs text-ink-300 flex-wrap">
@@ -82,11 +82,11 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
 
 // ============== VISTA DÍA ==============
 
-function DiaView({ empleados, attendance, schedules, condonaciones, turnos, offset }) {
+function DiaView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset }) {
   const dia = useMemo(() => addDays(new Date(), offset), [offset])
   const filas = useMemo(
-    () => vistaDia({ empleados, attendance, schedules, dia, condonaciones, turnos }),
-    [empleados, attendance, schedules, dia, condonaciones, turnos]
+    () => vistaDia({ empleados, attendance, schedules, dia, condonaciones, turnos, personOverrides }),
+    [empleados, attendance, schedules, dia, condonaciones, turnos, personOverrides]
   )
 
   return (
@@ -149,11 +149,11 @@ function DiaView({ empleados, attendance, schedules, condonaciones, turnos, offs
 
 // ============== VISTA SEMANA ==============
 
-function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, offset }) {
+function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset }) {
   const ini = useMemo(() => addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), offset * 7), [offset])
   const data = useMemo(
-    () => tablaSemanal({ empleados, attendance, schedules, ini, condonaciones, turnos }),
-    [empleados, attendance, schedules, ini, condonaciones, turnos]
+    () => tablaSemanal({ empleados, attendance, schedules, ini, condonaciones, turnos, personOverrides }),
+    [empleados, attendance, schedules, ini, condonaciones, turnos, personOverrides]
   )
   const dayLabels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
@@ -208,11 +208,11 @@ function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, o
 
 // ============== VISTA MES ==============
 
-function MesView({ empleados, attendance, schedules, condonaciones, turnos, offset }) {
+function MesView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset }) {
   const mes = useMemo(() => addMonths(startOfMonth(new Date()), offset), [offset])
   const data = useMemo(
-    () => tablaMensual({ empleados, attendance, schedules, mes, condonaciones, turnos }),
-    [empleados, attendance, schedules, mes, condonaciones, turnos]
+    () => tablaMensual({ empleados, attendance, schedules, mes, condonaciones, turnos, personOverrides }),
+    [empleados, attendance, schedules, mes, condonaciones, turnos, personOverrides]
   )
 
   // Totales globales del local

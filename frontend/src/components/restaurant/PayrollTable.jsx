@@ -15,7 +15,7 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
   const planilla = useMemo(() => {
     const semana = attendanceEnRango(attendance, ini, fin).filter(a => a.groupId === group.id)
     const fichajesPorPersona = groupByPerson(semana)
-    const tardanzas = tardanzasConCondonacion(attendance, schedules, cfg.condonaciones, ini, fin, cfg.turnos)
+    const tardanzas = tardanzasConCondonacion(attendance, schedules, cfg.condonaciones, ini, fin, cfg.turnos, cfg.personOverrides)
       .filter(t => t.groupId === group.id)
     const tardanzasPorPersona = groupByPerson(tardanzas)
     const empleadosConTarifa = empleados.map(emp => {

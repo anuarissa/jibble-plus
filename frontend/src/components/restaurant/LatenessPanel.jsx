@@ -14,16 +14,16 @@ export function LatenessPanel({ group, empleados, attendance, schedules, cfg }) 
   const fin = useMemo(() => addDays(ini, 6), [ini])
 
   const tardanzas = useMemo(() => {
-    return tardanzasConCondonacion(attendance, schedules, cfg.condonaciones, ini, fin, cfg.turnos)
+    return tardanzasConCondonacion(attendance, schedules, cfg.condonaciones, ini, fin, cfg.turnos, cfg.personOverrides)
       .filter(t => t.groupId === group.id)
       .sort((a, b) => b.minutosTarde - a.minutosTarde)
-  }, [attendance, schedules, cfg.condonaciones, cfg.turnos, ini, fin, group.id])
+  }, [attendance, schedules, cfg.condonaciones, cfg.turnos, cfg.personOverrides, ini, fin, group.id])
 
   // Contador mensual por empleado
   const mes = useMemo(() => {
     const m1 = startOfMonth(new Date())
     const m2 = endOfMonth(new Date())
-    const mensual = tardanzasConCondonacion(attendance, schedules, cfg.condonaciones, m1, m2, cfg.turnos)
+    const mensual = tardanzasConCondonacion(attendance, schedules, cfg.condonaciones, m1, m2, cfg.turnos, cfg.personOverrides)
       .filter(t => t.groupId === group.id)
     const counts = {}
     for (const t of mensual) {

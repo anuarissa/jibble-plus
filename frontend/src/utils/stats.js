@@ -4,21 +4,25 @@
 import { startOfWeek, endOfWeek, format, isWithinInterval, parseISO, addDays, startOfMonth, endOfMonth, getDaysInMonth, getDate } from 'date-fns'
 import { detectarTardanzasEnRango, minutosTarde } from './lateness'
 import { planillaEmpleado, sumarHoras } from './payroll'
-import { isoWeekKey, dayOfWeek, getTurnoEfectivo } from './turnos'
+import { isoWeekKey, dayOfWeek, getTurnoEfectivo, getDefaultParaDia, normalizarCelda } from './turnos'
 
-// Construye el resolver getStartTimeForFichaje a partir de turnos + schedules.
-// Devuelve "OFF" si el día está marcado off (no es tardanza), un "HH:MM" si hay turno o schedule, o null si no hay nada.
-export function buildStartTimeResolver(turnos, schedules) {
+// Construye el resolver getStartTimeForFichaje a partir de turnos + schedules + defaults.
+// Devuelve "OFF" si el día está marcado off, "HH:MM" si hay hora programada, o null si no hay nada.
+export function buildStartTimeResolver(turnos, schedules, personOverrides = {}) {
   const schedByPerson = new Map((schedules || []).map(s => [s.personId, s]))
   return (fichaje) => {
     if (!fichaje?.date) return null
     const wk = isoWeekKey(fichaje.date)
     const dow = dayOfWeek(fichaje.date)
-    const celda = turnos?.[wk]?.[fichaje.personId]?.[String(dow)]
-    if (celda === 'OFF') return 'OFF'
+    const celda = normalizarCelda(turnos?.[wk]?.[fichaje.personId]?.[String(dow)])
+    // Celda explícita: prevalece
+    if (celda?.tipo === 'OFF') return 'OFF'
     if (celda?.startTime) return celda.startTime
+    // celda null o tipo:'default' → usar default por día del empleado
     const sched = schedByPerson.get(fichaje.personId)
-    if (sched?.daysOfWeek?.includes(dow) && sched.startTime) return sched.startTime
+    const def = getDefaultParaDia(fichaje.personId, dow, personOverrides, sched)
+    if (def?.tipo === 'OFF') return 'OFF'
+    if (def?.startTime) return def.startTime
     return null
   }
 }
@@ -47,10 +51,11 @@ export function groupByPerson(records) {
 }
 
 // Tardanzas en un rango con flag .condonada aplicado desde el localStorage.
-// `turnos` opcional: si se pasa, las tardanzas usan el turno custom para cada día.
-export function tardanzasConCondonacion(attendance, schedules, condonaciones, ini, fin, turnos = null) {
+// `turnos` y `personOverrides` opcionales: usan turno custom + default por día del empleado.
+export function tardanzasConCondonacion(attendance, schedules, condonaciones, ini, fin, turnos = null, personOverrides = {}) {
   const inRange = attendanceEnRango(attendance, ini, fin)
-  const resolver = turnos ? buildStartTimeResolver(turnos, schedules) : null
+  // Siempre construir el resolver: aunque turnos sea null, los defaults por día sí afectan.
+  const resolver = buildStartTimeResolver(turnos || {}, schedules, personOverrides)
   const detectadas = detectarTardanzasEnRango(inRange, schedules || [], resolver)
   return detectadas.map(t => {
     const c = condonaciones[t.id]
@@ -59,7 +64,7 @@ export function tardanzasConCondonacion(attendance, schedules, condonaciones, in
 }
 
 // Stats por restaurante para usar en RestaurantCard del Dashboard.
-export function statsRestaurante({ group, people, attendance, schedules, active, tarifas, condonaciones, settings, turnos }) {
+export function statsRestaurante({ group, people, attendance, schedules, active, tarifas, condonaciones, settings, turnos, personOverrides = {} }) {
   const empleadosLocal = (people || []).filter(p => p.groupId === group.id)
   const { ini, fin } = semanaActual()
   const semana = attendanceEnRango(attendance, ini, fin).filter(a => a.groupId === group.id)
@@ -70,7 +75,7 @@ export function statsRestaurante({ group, people, attendance, schedules, active,
 
   // Planilla estimada
   const fichajesPorPersona = groupByPerson(semana)
-  const tardanzasFiltradas = tardanzasConCondonacion(attendance, schedules, condonaciones, ini, fin, turnos)
+  const tardanzasFiltradas = tardanzasConCondonacion(attendance, schedules, condonaciones, ini, fin, turnos, personOverrides)
     .filter(t => t.groupId === group.id)
   const tardanzasPorPersona = groupByPerson(tardanzasFiltradas)
   let planillaTotal = 0
@@ -115,7 +120,7 @@ export function statsGlobales({ groups, ...rest }) {
   }
   // Recalc puntualidad global desde tardanzas globales
   const { ini, fin } = semanaActual()
-  const tardanzasGlob = tardanzasConCondonacion(rest.attendance, rest.schedules, rest.condonaciones, ini, fin, rest.turnos)
+  const tardanzasGlob = tardanzasConCondonacion(rest.attendance, rest.schedules, rest.condonaciones, ini, fin, rest.turnos, rest.personOverrides)
   const semana = attendanceEnRango(rest.attendance, ini, fin)
   const totalFichG = semana.length
   const conTard = tardanzasGlob.filter(t => !t.condonada).length
@@ -123,27 +128,37 @@ export function statsGlobales({ groups, ...rest }) {
   return { totalEmpleados: totalEmp, horasSemana: horas, planillaSemana: planilla, puntualidadGlobal: punt }
 }
 
-// Helper interno: resuelve estado, mins tarde, horas y turno custom para un día específico.
-function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, weekKeyOverride }) {
+// Helper interno: resuelve estado, mins tarde, horas y turno para un día.
+// Prioridad: turno custom de la semana > default por día del empleado > schedule legacy.
+function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, personOverrides = {}, weekKeyOverride }) {
   const dayStr = format(day, 'yyyy-MM-dd')
   const fich = fichajesEmp.find(a => a.date === dayStr)
   const dow = day.getDay() === 0 ? 7 : day.getDay()
   const wk = weekKeyOverride || isoWeekKey(day)
 
-  const celdaTurno = turnos?.[wk]?.[emp.id]?.[String(dow)]
+  const celdaTurno = normalizarCelda(turnos?.[wk]?.[emp.id]?.[String(dow)])
   let startTimeProgramado = null
   let endTimeProgramado = null
   let programado = false
-  if (celdaTurno === 'OFF') {
-    programado = false
+  let turnoCustom = false
+
+  if (celdaTurno?.tipo === 'OFF') {
+    programado = false  // OFF explícito
   } else if (celdaTurno?.startTime) {
     startTimeProgramado = celdaTurno.startTime
     endTimeProgramado = celdaTurno.endTime
     programado = true
-  } else if (sched?.daysOfWeek?.includes(dow)) {
-    startTimeProgramado = sched.startTime
-    endTimeProgramado = sched.endTime
-    programado = true
+    turnoCustom = true
+  } else {
+    // Sin celda explícita → usar default por día (defaultWeek > schedule legacy)
+    const def = getDefaultParaDia(emp.id, dow, personOverrides, sched)
+    if (def?.tipo === 'OFF') {
+      programado = false
+    } else if (def?.startTime) {
+      startTimeProgramado = def.startTime
+      endTimeProgramado = def.endTime
+      programado = true
+    }
   }
 
   if (!programado) return { state: 'idle', day, dayStr }
@@ -163,23 +178,23 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, week
     state, day, dayStr, fichaje: fich, horas, mins,
     programadoStart: startTimeProgramado,
     programadoEnd: endTimeProgramado,
-    turnoCustom: !!celdaTurno?.startTime,
+    turnoCustom,
   }
 }
 
 // VISTA DÍA: detalle de un único día — un empleado por fila con horas exactas.
-export function vistaDia({ empleados, attendance, schedules, dia, condonaciones, turnos = null }) {
+export function vistaDia({ empleados, attendance, schedules, dia, condonaciones, turnos = null, personOverrides = {} }) {
   const filas = empleados.map(emp => {
     const sched = schedules.find(s => s.personId === emp.id)
     const fichajesEmp = (attendance || []).filter(a => a.personId === emp.id)
-    const cell = resolverDia({ emp, day: dia, fichajesEmp, sched, condonaciones, turnos })
+    const cell = resolverDia({ emp, day: dia, fichajesEmp, sched, condonaciones, turnos, personOverrides })
     return { empleado: emp, ...cell }
   })
   return filas
 }
 
 // VISTA MES: filas = empleados, columnas = todos los días del mes.
-export function tablaMensual({ empleados, attendance, schedules, mes, condonaciones, turnos = null }) {
+export function tablaMensual({ empleados, attendance, schedules, mes, condonaciones, turnos = null, personOverrides = {} }) {
   const ini = startOfMonth(mes)
   const numDias = getDaysInMonth(mes)
   const dias = Array.from({ length: numDias }, (_, i) => addDays(ini, i))
@@ -187,7 +202,7 @@ export function tablaMensual({ empleados, attendance, schedules, mes, condonacio
   const filas = empleados.map(emp => {
     const sched = schedules.find(s => s.personId === emp.id)
     const fichajesEmp = (attendance || []).filter(a => a.personId === emp.id)
-    const cells = dias.map(day => resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos }))
+    const cells = dias.map(day => resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, personOverrides }))
     const totalHoras = cells.reduce((acc, c) => acc + (c.horas || 0), 0)
     const tardanzas = cells.filter(c => c.state === 'warn' || c.state === 'bad').length
     const aTiempo = cells.filter(c => c.state === 'good').length
@@ -198,14 +213,14 @@ export function tablaMensual({ empleados, attendance, schedules, mes, condonacio
 }
 
 // Datos para tabla semanal de asistencia: filas por empleado, columnas por día.
-export function tablaSemanal({ empleados, attendance, schedules, ini, condonaciones, turnos = null }) {
+export function tablaSemanal({ empleados, attendance, schedules, ini, condonaciones, turnos = null, personOverrides = {} }) {
   const dias = Array.from({ length: 7 }, (_, i) => addDays(ini, i))
   const weekKey = isoWeekKey(ini)
   const filas = empleados.map(emp => {
     const sched = schedules.find(s => s.personId === emp.id)
     const fichajesEmp = (attendance || []).filter(a => a.personId === emp.id)
     const cells = dias.map(day =>
-      resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, weekKeyOverride: weekKey })
+      resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, personOverrides, weekKeyOverride: weekKey })
     )
     const totalHoras = cells.reduce((acc, c) => acc + (c.horas || 0), 0)
     return { empleado: emp, cells, totalHoras }
