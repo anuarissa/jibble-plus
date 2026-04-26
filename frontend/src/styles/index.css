@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    font-family: theme(fontFamily.sans);
+    line-height: 1.6;
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(255,107,53,0.06), transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, rgba(99,102,241,0.05), transparent 60%),
+      theme(colors.bg.900);
+    min-height: 100vh;
+  }
+  h1, h2, h3 {
+    font-family: theme(fontFamily.display);
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+  h1 { font-weight: 700; }
+  h2 { font-weight: 600; }
+  ::selection { background: rgba(255,107,53,0.35); }
+}
+
+@layer components {
+  .surface {
+    @apply bg-bg-800/70 backdrop-blur-sm border border-white/5 rounded-2xl shadow-card;
+  }
+  .surface-elevated {
+    @apply bg-bg-700/80 border border-white/[0.06] rounded-2xl shadow-soft;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition duration-200 ease-spring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-white hover:bg-accent-600 shadow-glow;
+  }
+  .btn-secondary {
+    @apply btn bg-bg-600 text-ink-50 hover:bg-bg-500 border border-white/5;
+  }
+  .btn-ghost {
+    @apply btn text-ink-200 hover:text-ink-50 hover:bg-bg-700;
+  }
+  .input {
+    @apply w-full bg-bg-700/60 border border-white/5 rounded-xl px-4 py-2.5 text-ink-50 placeholder:text-ink-300 focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent/40 transition;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .grain {
+    position: relative;
+  }
+  .grain::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+    opacity: 0.025;
+    pointer-events: none;
+    mix-blend-mode: overlay;
+    border-radius: inherit;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme(colors.bg.500) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: theme(colors.bg.500); border-radius: 4px; }
+}
