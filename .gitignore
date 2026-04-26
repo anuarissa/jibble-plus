@@ -11,3 +11,5 @@ screenshot-flow.mjs
 INFORME-EMPLEADOS-*.md
 backend/.env
 frontend/.env
+
+.vercel
