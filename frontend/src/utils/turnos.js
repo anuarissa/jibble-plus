@@ -10,6 +10,7 @@
 //   - null/undefined                          — usar el default del empleado para ese día
 
 import { getISOWeek, getISOWeekYear, parseISO, addDays, startOfISOWeek } from 'date-fns'
+import { EMPLOYEE_OVERRIDES } from '../config/employees'
 
 // "2026-W17" — usado como clave de semana
 export function isoWeekKey(date) {
@@ -65,14 +66,24 @@ export function normalizarCelda(raw) {
 }
 
 // Default por día del empleado.
-// Prioridad: defaultWeek (override usuario) > schedule legacy (todos los días iguales) > null.
+// Prioridad:
+//   1) defaultWeek del usuario (localStorage) — editable desde Empleados
+//   2) defaultWeek hardcodeado (EMPLOYEE_OVERRIDES de config/employees.js)
+//   3) schedule legacy (mismo horario todos los días)
+//   4) null
 // Devuelve { startTime, endTime } | { tipo:'OFF' } | null.
 export function getDefaultParaDia(personId, dow, personOverrides, schedule) {
-  const dw = personOverrides?.[personId]?.defaultWeek
-  if (dw) {
-    const c = normalizarCelda(dw[String(dow)])
+  const dwUser = personOverrides?.[personId]?.defaultWeek
+  if (dwUser) {
+    const c = normalizarCelda(dwUser[String(dow)])
     if (c) return c
-    return null // defaultWeek presente pero el día no está definido → sin default
+    return null
+  }
+  const dwHard = EMPLOYEE_OVERRIDES?.[personId]?.defaultWeek
+  if (dwHard) {
+    const c = normalizarCelda(dwHard[String(dow)])
+    if (c) return c
+    return null
   }
   if (schedule?.daysOfWeek?.includes(dow) && schedule.startTime && schedule.endTime) {
     return { startTime: schedule.startTime, endTime: schedule.endTime }

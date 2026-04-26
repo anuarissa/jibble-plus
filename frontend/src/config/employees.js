@@ -63,6 +63,56 @@ export const EMPLOYEE_OVERRIDES = {
     tarifa: 0,
     skip: true, // marca para excluir de planilla
   },
+  // === SBARRO AMÉRICA ===
+  // Horario default: 16:00-23:00 todos los días, miércoles libre
+  // Fabiola Rojas
+  '93a65596-276e-4b8b-93bd-56d0017621ca': {
+    nombre: 'Fabiola Rojas',
+    groupId: '3ab9e1ac-b61b-462e-9322-b5575e710fac', // SBARRO AMERICA
+    sueldoMensual: 3300,
+    tarifa: 13.75,
+    defaultWeek: {
+      '1': { startTime: '16:00', endTime: '23:00' },
+      '2': { startTime: '16:00', endTime: '23:00' },
+      '3': 'OFF',
+      '4': { startTime: '16:00', endTime: '23:00' },
+      '5': { startTime: '16:00', endTime: '23:00' },
+      '6': { startTime: '16:00', endTime: '23:00' },
+      '7': { startTime: '16:00', endTime: '23:00' },
+    },
+  },
+  // Axel Acosta
+  '6afcf65b-e0d7-477a-8b92-c16590fcfbfe': {
+    nombre: 'Axel Acosta',
+    groupId: '3ab9e1ac-b61b-462e-9322-b5575e710fac',
+    sueldoMensual: 3300,
+    tarifa: 13.75,
+    defaultWeek: {
+      '1': { startTime: '16:00', endTime: '23:00' },
+      '2': { startTime: '16:00', endTime: '23:00' },
+      '3': 'OFF',
+      '4': { startTime: '16:00', endTime: '23:00' },
+      '5': { startTime: '16:00', endTime: '23:00' },
+      '6': { startTime: '16:00', endTime: '23:00' },
+      '7': { startTime: '16:00', endTime: '23:00' },
+    },
+  },
+  // Anthony Inturias
+  '84130dab-0854-42d1-8855-2e7979f4dad5': {
+    nombre: 'Anthony Inturias',
+    groupId: '3ab9e1ac-b61b-462e-9322-b5575e710fac',
+    sueldoMensual: 3300,
+    tarifa: 13.75,
+    defaultWeek: {
+      '1': { startTime: '16:00', endTime: '23:00' },
+      '2': { startTime: '16:00', endTime: '23:00' },
+      '3': 'OFF',
+      '4': { startTime: '16:00', endTime: '23:00' },
+      '5': { startTime: '16:00', endTime: '23:00' },
+      '6': { startTime: '16:00', endTime: '23:00' },
+      '7': { startTime: '16:00', endTime: '23:00' },
+    },
+  },
 }
 
 // Default schedule (para empleados full-time sin override).
