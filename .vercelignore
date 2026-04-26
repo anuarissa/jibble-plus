@@ -1,0 +1,10 @@
+# En Vercel solo usamos /api (serverless) + /frontend (Vite build).
+# /backend es solo Express para dev local — no se deploya.
+backend/
+screenshot-flow.mjs
+INFORME-EMPLEADOS-*.md
+prompt_claude_code.md
+start.bat
+DEPLOY.md
+
+# .git ya queda fuera por default
