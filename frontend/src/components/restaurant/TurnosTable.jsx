@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, format, startOfWeek } from 'date-fns'
-import { ChevronLeft, ChevronRight, Copy, Download, Upload, AlertCircle, StickyNote, X, Pencil } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Copy, Download, Upload, AlertCircle, StickyNote, X, Pencil, Save, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Avatar } from '../ui/Avatar'
 import {
@@ -9,10 +9,15 @@ import {
 } from '../../utils/turnos'
 import { descargarTemplateTurnos, parseExcelTurnosAuto } from '../../utils/excel-turnos'
 
+// Sentinel para borrar una celda (volver al default) en el buffer.
+const DELETE = '__DELETE__'
+
 export function TurnosTable({ group, empleados, schedules, cfg }) {
   const [offset, setOffset] = useState(0)
   const [showCambios, setShowCambios] = useState(false)
   const [editingNota, setEditingNota] = useState(null) // { personId, dow }
+  // Buffer de cambios pendientes — { [personId]: { [dow]: valor | DELETE } }
+  const [pending, setPending] = useState({})
   const fileInputRef = useRef(null)
 
   const ini = useMemo(() => addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), offset * 7), [offset])
@@ -24,19 +29,72 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
   const tienePrev = !!cfg.turnos?.[semanaAnterior]
   const nombreLocal = cfg.config.locales[group.id]?.name || group.name
 
-  // Excepciones de la semana — para el contador del header y la lista expandible
+  // Merge de turnos guardados + pending para visualización efectiva.
+  // Útil para contarCambios y para resolver el valor que ve cada celda.
+  const turnosEfectivos = useMemo(() => {
+    const semana = { ...semanaTurnos }
+    for (const pid of Object.keys(pending)) {
+      const merged = { ...(semana[pid] || {}) }
+      for (const dow of Object.keys(pending[pid])) {
+        const v = pending[pid][dow]
+        if (v === DELETE) delete merged[dow]
+        else merged[dow] = v
+      }
+      semana[pid] = merged
+    }
+    return semana
+  }, [semanaTurnos, pending])
+
+  // Excepciones de la semana (basadas en lo efectivo, incluyendo pending)
   const cambios = useMemo(
-    () => contarCambios(semanaTurnos, empleados, schedules, cfg.personOverrides),
-    [semanaTurnos, empleados, schedules, cfg.personOverrides]
+    () => contarCambios(turnosEfectivos, empleados, schedules, cfg.personOverrides),
+    [turnosEfectivos, empleados, schedules, cfg.personOverrides]
   )
+
+  // Cantidad de cambios pendientes (sin guardar)
+  const pendingCount = useMemo(() => {
+    let n = 0
+    for (const pid of Object.keys(pending)) n += Object.keys(pending[pid]).length
+    return n
+  }, [pending])
+
+  // Resetear pending al cambiar de semana — con confirmación si hay pending
+  const lastWeekKeyRef = useRef(weekKey)
+  useEffect(() => {
+    if (lastWeekKeyRef.current === weekKey) return
+    if (pendingCount > 0) {
+      const ok = window.confirm(`Tienes ${pendingCount} cambios sin guardar. ¿Descartarlos?`)
+      if (!ok) {
+        // No se puede revertir el setOffset desde acá; al menos limpiar para evitar loop.
+      }
+    }
+    setPending({})
+    lastWeekKeyRef.current = weekKey
+  }, [weekKey, pendingCount])
+
+  // Aviso al cerrar la pestaña con cambios pendientes
+  useEffect(() => {
+    function beforeUnload(e) {
+      if (pendingCount > 0) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', beforeUnload)
+    return () => window.removeEventListener('beforeunload', beforeUnload)
+  }, [pendingCount])
 
   function handleCopiarPrev() {
     if (!tienePrev) {
       toast.error('La semana anterior no tiene turnos cargados.')
       return
     }
+    if (pendingCount > 0) {
+      if (!confirm(`Tienes ${pendingCount} cambios sin guardar. ¿Descartarlos y copiar?`)) return
+    }
     if (!confirm(`¿Copiar todos los turnos de la semana ${semanaAnterior} sobre ${weekKey}? Sobreescribe lo actual.`)) return
     cfg.copiarTurnosDesdeAnterior(weekKey, semanaAnterior)
+    setPending({})
     toast.success(`Turnos copiados desde ${semanaAnterior}`)
   }
 
@@ -56,17 +114,14 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
         toast.error('No se pudo aplicar ninguna celda. Revisa el formato.')
         return
       }
-      // Aplicar cada semana por separado (puede ser una o varias)
       for (const [wk, datos] of semanasAplicar) {
         cfg.setTurnosSemana(wk, datos)
       }
+      // Importar Excel guarda directo (no usa el buffer pending — flujo masivo)
+      setPending({})
       const formatoLabel = result.formato === 'anuar' ? '(formato planilla)' : '(template)'
       const semsLabel = semanasAplicar.length > 1 ? ` en ${semanasAplicar.length} semanas` : ''
       toast.success(`${result.celdasOk} turnos cargados${semsLabel} ${formatoLabel}`, { duration: 5000 })
-      if (semanasAplicar.length > 1) {
-        const wks = semanasAplicar.map(([w]) => w).join(', ')
-        toast.message(`Semanas: ${wks}`, { duration: 6000 })
-      }
       if (result.warnings.length > 0) {
         result.warnings.slice(0, 5).forEach(w => toast.warning(w, { duration: 6000 }))
         if (result.warnings.length > 5) {
@@ -77,6 +132,65 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
     } catch (err) {
       toast.error('Error leyendo Excel: ' + err.message)
     }
+  }
+
+  // Cuando el usuario edita una celda, NO se persiste en localStorage —
+  // solo en el buffer pending. Hasta que aprieten Guardar.
+  function handleCellChange(personId, dow, valor) {
+    setPending(prev => {
+      const next = { ...prev }
+      const persona = { ...(next[personId] || {}) }
+      // Si valor === null y la celda guardada original tampoco tenía valor,
+      // limpiar la entrada en lugar de marcarla como DELETE
+      const original = semanaTurnos[personId]?.[String(dow)]
+      if (valor == null) {
+        if (original == null) {
+          // No había nada → no marcamos delete, solo quitar del pending si estaba
+          delete persona[String(dow)]
+        } else {
+          persona[String(dow)] = DELETE
+        }
+      } else {
+        // Si el nuevo valor es igual al original, no es un cambio real
+        if (JSON.stringify(valor) === JSON.stringify(original)) {
+          delete persona[String(dow)]
+        } else {
+          persona[String(dow)] = valor
+        }
+      }
+      if (Object.keys(persona).length === 0) delete next[personId]
+      else next[personId] = persona
+      return next
+    })
+  }
+
+  // Las notas se guardan directo (no pasan por el buffer).
+  // Nota está pensada como auditoría / contexto, no como cambio operativo reversible.
+  function handleNotaChange(personId, dow, nota) {
+    cfg.setNotaCelda(weekKey, personId, dow, nota)
+    setEditingNota(null)
+    if (nota) toast.success('Nota guardada')
+  }
+
+  function handleGuardar() {
+    let n = 0
+    for (const pid of Object.keys(pending)) {
+      for (const dow of Object.keys(pending[pid])) {
+        const v = pending[pid][dow]
+        if (v === DELETE) cfg.setTurnoCelda(weekKey, pid, parseInt(dow), null)
+        else cfg.setTurnoCelda(weekKey, pid, parseInt(dow), v)
+        n++
+      }
+    }
+    setPending({})
+    toast.success(`${n} ${n === 1 ? 'cambio guardado' : 'cambios guardados'}`)
+  }
+
+  function handleDescartar() {
+    if (pendingCount === 0) return
+    if (!confirm(`¿Descartar ${pendingCount} cambios sin guardar?`)) return
+    setPending({})
+    toast.message('Cambios descartados')
   }
 
   return (
@@ -100,12 +214,33 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
           <button onClick={handleDescargar} className="btn-secondary text-xs">
             <Download size={14} /> Excel template
           </button>
-          <button onClick={() => fileInputRef.current?.click()} className="btn-primary text-xs">
+          <button onClick={() => fileInputRef.current?.click()} className="btn-secondary text-xs">
             <Upload size={14} /> Importar Excel
           </button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportar} />
         </div>
       </div>
+
+      {/* Banner sticky cuando hay cambios pendientes */}
+      {pendingCount > 0 && (
+        <div className="mb-4 sticky top-2 z-30 surface-elevated border-accent/40 ring-1 ring-accent/40 shadow-glow">
+          <div className="p-3 flex items-center gap-3 flex-wrap">
+            <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+            <span className="font-medium text-ink-50 text-sm">
+              {pendingCount} {pendingCount === 1 ? 'cambio sin guardar' : 'cambios sin guardar'}
+            </span>
+            <span className="text-xs text-ink-300">— se aplicarán cuando aprietes Guardar</span>
+            <div className="ml-auto flex items-center gap-2">
+              <button onClick={handleDescartar} className="btn-ghost text-xs">
+                <Undo2 size={13} /> Descartar
+              </button>
+              <button onClick={handleGuardar} className="btn-primary text-xs">
+                <Save size={13} /> Guardar todos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {cambios.length > 0 && (
         <div className="mb-4 surface-elevated border-accent/30">
@@ -179,23 +314,23 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
                       </div>
                     </td>
                     {[1, 2, 3, 4, 5, 6, 7].map(dow => {
-                      const raw = semanaTurnos[emp.id]?.[String(dow)]
+                      const valorEfectivo = turnosEfectivos[emp.id]?.[String(dow)]
+                      const valorOriginal = semanaTurnos[emp.id]?.[String(dow)]
                       const def = getDefaultParaDia(emp.id, dow, cfg.personOverrides, sched)
                       const isEditing = editingNota?.personId === emp.id && editingNota?.dow === dow
+                      const tienePending = pending[emp.id]?.[String(dow)] !== undefined
                       return (
-                        <td key={dow} className="px-1 py-2 align-top">
+                        <td key={dow} className="px-1 py-1 align-top">
                           <TurnoCell
-                            valor={raw}
+                            valor={valorEfectivo}
+                            valorOriginal={valorOriginal}
+                            tienePending={tienePending}
                             defaultDia={def}
-                            onChange={(v) => cfg.setTurnoCelda(weekKey, emp.id, dow, v)}
+                            onChange={(v) => handleCellChange(emp.id, dow, v)}
                             onAbrirNota={() => setEditingNota({ personId: emp.id, dow })}
                             isEditingNota={isEditing}
                             onCerrarNota={() => setEditingNota(null)}
-                            onGuardarNota={(nota) => {
-                              cfg.setNotaCelda(weekKey, emp.id, dow, nota)
-                              setEditingNota(null)
-                              if (nota) toast.success('Nota guardada')
-                            }}
+                            onGuardarNota={(nota) => handleNotaChange(emp.id, dow, nota)}
                           />
                         </td>
                       )
@@ -209,14 +344,19 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
       )}
 
       <div className="mt-5 pt-4 border-t border-white/5 text-xs text-ink-300 space-y-1">
-        <p>El horario en gris es el <strong>default del empleado</strong>. Si una celda está distinta del default, se marca en naranja.</p>
-        <p>Hover sobre la celda para ver el ícono 📝 — click para escribir nota del por qué cambió esta semana.</p>
+        <p>El horario en gris claro es el <strong>default del empleado</strong>. Si una celda difiere, se marca con un borde lateral de color y un punto pequeño dentro.</p>
+        <p>🟧 cambio de horario · 🟢 cubre (antes era libre) · 🔴 pasó a OFF · 🟦 pendiente de guardar.</p>
+        <p>Hover sobre la celda → ícono 📝 para escribir nota del por qué cambió esta semana.</p>
       </div>
     </div>
   )
 }
 
-function TurnoCell({ valor, defaultDia, onChange, onAbrirNota, isEditingNota, onCerrarNota, onGuardarNota }) {
+// =====================================================================
+// CELDA DE TURNO — visual sutil con border-l-2 + dots internos
+// =====================================================================
+
+function TurnoCell({ valor, valorOriginal, tienePending, defaultDia, onChange, onAbrirNota, isEditingNota, onCerrarNota, onGuardarNota }) {
   const norm = normalizarCelda(valor)
   const tipo = tipoExcepcion(valor, defaultDia)
   const tieneNota = !!norm?.nota
@@ -226,9 +366,20 @@ function TurnoCell({ valor, defaultDia, onChange, onAbrirNota, isEditingNota, on
   const offExplicito = norm?.tipo === 'OFF'
   const defOff = defaultDia?.tipo === 'OFF'
 
+  // Color del borde lateral según tipo de excepción
+  let borderColor = 'transparent'
+  if (esEx && tipo === 'cambio-off') borderColor = '#ef4444' // bad
+  else if (esEx && tipo === 'cubre') borderColor = '#22c55e' // good
+  else if (esEx) borderColor = '#ff6b35' // accent
+
+  // Dot interno (esquina sup. izq.) según tipo
+  let dotColor = null
+  if (esEx && tipo === 'cambio-off') dotColor = '#ef4444'
+  else if (esEx && tipo === 'cubre') dotColor = '#22c55e'
+  else if (esEx) dotColor = '#ff6b35'
+
   function setEntrada(v) {
     if (!v && !norm?.endTime) {
-      // limpiar ambos: volver a default (preservando nota)
       if (norm?.nota) onChange({ tipo: 'default', nota: norm.nota })
       else onChange(null)
       return
@@ -252,34 +403,60 @@ function TurnoCell({ valor, defaultDia, onChange, onAbrirNota, isEditingNota, on
     }
   }
   function activarDesdeDefault() {
-    // Convertir el default en valor explícito para empezar a editar
     const seed = defaultDia?.startTime
       ? { startTime: defaultDia.startTime, endTime: defaultDia.endTime }
       : { startTime: '08:00', endTime: '16:00' }
     onChange({ ...seed, ...(norm?.nota ? { nota: norm.nota } : {}) })
   }
-  function quitarOff() {
-    if (norm?.nota) onChange({ tipo: 'default', nota: norm.nota })
-    else onChange(null)
+
+  // Construye tooltip con contexto del cambio
+  const tooltip = useMemo(() => {
+    const parts = []
+    if (tipo === 'cambio-horario' && defaultDia) parts.push(`Default: ${defaultDia.startTime}-${defaultDia.endTime} → ${norm?.startTime}-${norm?.endTime}`)
+    else if (tipo === 'cambio-off' && defaultDia) parts.push(`Default: ${defaultDia.startTime}-${defaultDia.endTime} → OFF`)
+    else if (tipo === 'cubre') parts.push(`Default: OFF → ${norm?.startTime}-${norm?.endTime} (cubre)`)
+    if (tienePending) parts.push('Sin guardar')
+    if (norm?.nota) parts.push(`Nota: ${norm.nota}`)
+    return parts.join(' · ')
+  }, [tipo, defaultDia, norm, tienePending])
+
+  // Visual base — MISMO TAMAÑO siempre (no agrandar con badges externos)
+  const baseStyle = {
+    borderLeftWidth: borderColor === 'transparent' ? '1px' : '3px',
+    borderLeftColor: borderColor === 'transparent' ? 'rgba(255,255,255,0.05)' : borderColor,
   }
 
-  const baseCls = 'relative group rounded-lg p-1 transition min-h-[64px]'
-  let bgCls = ''
-  if (esEx && tipo === 'cambio-off') bgCls = 'bg-bad/10 ring-1 ring-bad/40'
-  else if (esEx && tipo === 'cubre') bgCls = 'bg-good/10 ring-1 ring-good/40'
-  else if (esEx) bgCls = 'bg-accent/10 ring-1 ring-accent/40'
+  const dotsCorner = (
+    <>
+      {dotColor && (
+        <span
+          className="absolute top-1 left-1 w-1.5 h-1.5 rounded-full"
+          style={{ background: dotColor }}
+        />
+      )}
+      {tienePending && (
+        <span
+          className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full ring-1 ring-bg-800"
+          style={{ background: '#0ea5e9' }}
+          title="Sin guardar"
+        />
+      )}
+    </>
+  )
 
-  const tooltip = norm?.nota || ''
-
-  // CASO A: OFF explícito (puede ser cambio respecto al default)
+  // CASO A: OFF explícito
   if (offExplicito) {
     return (
-      <div className={`${baseCls} ${bgCls}`} title={tooltip}>
-        {esEx && <span className="absolute -top-1.5 left-1 z-10 text-[8px] uppercase tracking-wider bg-bad text-white rounded px-1 font-bold">CAMBIO</span>}
+      <div
+        className="relative group rounded-md min-h-[64px] bg-bg-700/30 border border-white/5"
+        style={baseStyle}
+        title={tooltip}
+      >
+        {dotsCorner}
         <NotaButton tieneNota={tieneNota} onClick={onAbrirNota} />
         <button
           onClick={toggleOff}
-          className="w-full h-full px-2 py-3 rounded-lg text-xs font-medium bg-idle/20 text-ink-300 border border-white/5 hover:bg-idle/30 transition"
+          className="w-full h-full px-2 py-3 rounded-md text-xs font-medium text-ink-300 hover:bg-bg-700/50 transition"
         >
           OFF
         </button>
@@ -288,21 +465,26 @@ function TurnoCell({ valor, defaultDia, onChange, onAbrirNota, isEditingNota, on
     )
   }
 
-  // CASO B: sin valor explícito → mostrar default si existe (vista compacta clickeable)
+  // CASO B: sin valor explícito → mostrar default si existe (placeholder)
   if (!tieneValorExplicito) {
     return (
-      <div className={`${baseCls}`} title={tieneNota ? norm.nota : (defaultDia?.startTime || defOff ? 'Click para editar (sobreescribe el default)' : 'Click para asignar turno')}>
+      <div
+        className="relative group rounded-md min-h-[64px] border border-white/5"
+        style={baseStyle}
+        title={tieneNota ? norm.nota : (defaultDia?.startTime || defOff ? 'Default · click para cambiar' : 'Click para asignar turno')}
+      >
+        {dotsCorner}
         <NotaButton tieneNota={tieneNota} onClick={onAbrirNota} />
         <button
           onClick={activarDesdeDefault}
-          className="w-full h-full px-1 py-2 rounded-lg border border-dashed border-white/10 text-center hover:bg-bg-700/50 hover:border-accent/40 transition"
+          className="w-full h-full px-1 py-2 rounded-md text-center hover:bg-bg-700/50 transition"
         >
           {defOff ? (
             <span className="text-xs text-ink-400 italic">libre</span>
           ) : defaultDia?.startTime ? (
             <span className="block leading-tight">
-              <span className="block text-xs font-mono text-ink-300">{defaultDia.startTime}</span>
-              <span className="block text-xs font-mono text-ink-400">{defaultDia.endTime}</span>
+              <span className="block text-xs font-mono text-ink-400">{defaultDia.startTime}</span>
+              <span className="block text-xs font-mono text-ink-500">{defaultDia.endTime}</span>
             </span>
           ) : (
             <span className="text-xs text-ink-500">+ asignar</span>
@@ -313,13 +495,16 @@ function TurnoCell({ valor, defaultDia, onChange, onAbrirNota, isEditingNota, on
     )
   }
 
-  // CASO C: turno explícito con horarios → inputs editables
+  // CASO C: turno explícito con horarios
   return (
-    <div className={`${baseCls} ${bgCls}`} title={tooltip}>
-      {esEx && tipo === 'cubre' && <span className="absolute -top-1.5 left-1 z-10 text-[8px] uppercase tracking-wider bg-good text-white rounded px-1 font-bold">CUBRE</span>}
-      {esEx && tipo === 'cambio-horario' && <span className="absolute -top-1.5 left-1 z-10 text-[8px] uppercase tracking-wider bg-accent text-white rounded px-1 font-bold">CAMBIO</span>}
+    <div
+      className="relative group rounded-md min-h-[64px] border border-white/5"
+      style={baseStyle}
+      title={tooltip}
+    >
+      {dotsCorner}
       <NotaButton tieneNota={tieneNota} onClick={onAbrirNota} />
-      <div className="space-y-1">
+      <div className="space-y-1 p-1">
         <input
           type="time"
           value={norm.startTime}
@@ -348,14 +533,14 @@ function NotaButton({ tieneNota, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`absolute -top-1.5 -right-1 z-10 w-5 h-5 rounded-full flex items-center justify-center transition ${
+      className={`absolute top-1 right-1 z-10 w-5 h-5 rounded-full flex items-center justify-center transition ${
         tieneNota
-          ? 'bg-accent text-white opacity-100 shadow-glow'
+          ? 'bg-accent/80 text-white opacity-100'
           : 'bg-bg-700 text-ink-400 opacity-0 group-hover:opacity-100 hover:text-accent border border-white/10'
       }`}
       title={tieneNota ? 'Editar nota' : 'Agregar nota'}
     >
-      <StickyNote size={11} />
+      <StickyNote size={10} />
     </button>
   )
 }

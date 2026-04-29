@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { addDays, format, startOfWeek, addMonths, startOfMonth } from 'date-fns'
-import { ChevronLeft, ChevronRight, CalendarDays, Calendar, CalendarRange } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, Calendar, CalendarRange, Download, FileSpreadsheet } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
 import { tablaSemanal, vistaDia, tablaMensual } from '../../utils/stats'
-import { formatHoras, formatHora, formatFechaCorta } from '../../utils/format'
+import { formatHoras, formatHora, formatFechaCorta, formatFecha } from '../../utils/format'
+import { exportCSV, exportExcel } from '../../utils/export'
+import { CeldaDetalleModal, MotivoBadge } from './CeldaDetalleModal'
 
 const MODOS = [
   { id: 'dia', label: 'Día', icon: Calendar },
@@ -18,22 +20,121 @@ const colorState = {
   idle: 'bg-idle/30',
 }
 
-export function AttendanceTable({ empleados, attendance, schedules, condonaciones, turnos, personOverrides }) {
+// Mini-dot lateral para indicar el estado de SALIDA (cuando difiere del estándar).
+//   extras → punto azul (#0ea5e9)
+//   temprano → punto morado (#a855f7)
+//   sinSalida → anillo gris claro
+function colorDotSalida(salidaState) {
+  if (salidaState === 'extras') return '#0ea5e9'
+  if (salidaState === 'temprano') return '#a855f7'
+  if (salidaState === 'sinSalida') return '#6b6b73'
+  return null
+}
+
+// Construye el tooltip enriquecido para una celda
+function tooltipCelda(c, fechaLabel) {
+  if (c.state === 'idle' && !c.falto) return `${fechaLabel} · Día libre`
+  if (c.falto) return `${fechaLabel} · No fichó · Programado ${c.programadoStart}–${c.programadoEnd}`
+  const partes = [
+    fechaLabel,
+    `Programado ${c.programadoStart}–${c.programadoEnd}`,
+    `Real ${c.fichaje?.clockIn ? formatHora(c.fichaje.clockIn) : '?'} → ${c.fichaje?.clockOut ? formatHora(c.fichaje.clockOut) : 'activo'}`,
+    c.horas != null ? `${formatHoras(c.horas)} trabajadas` : null,
+    c.mins > 0 ? `Tarde +${c.mins}min` : null,
+    c.salidaState === 'extras' ? `Quedó +${c.minSalidaDiff}min extras` : null,
+    c.salidaState === 'temprano' ? `Salió ${Math.abs(c.minSalidaDiff)}min antes` : null,
+    c.salidaState === 'sinSalida' ? `Sin salida (activo)` : null,
+  ].filter(Boolean)
+  return partes.join(' · ')
+}
+
+// Helpers de export — convierten una "celda" resuelta a fila plana
+function celdaToRow(empleado, c, nombreLocal) {
+  if (c.state === 'idle' && !c.falto) {
+    return {
+      Fecha: c.dayStr,
+      Empleado: empleado.fullName,
+      Cargo: empleado.position || '',
+      Local: nombreLocal,
+      Estado: 'Día libre',
+      'Programado entrada': '',
+      'Entrada real': '',
+      'Min tarde': '',
+      'Programado salida': '',
+      'Salida real': '',
+      'Diff salida (min)': '',
+      'Horas trabajadas': '',
+    }
+  }
+  if (c.falto) {
+    return {
+      Fecha: c.dayStr,
+      Empleado: empleado.fullName,
+      Cargo: empleado.position || '',
+      Local: nombreLocal,
+      Estado: 'No fichó',
+      'Programado entrada': c.programadoStart || '',
+      'Entrada real': '',
+      'Min tarde': '',
+      'Programado salida': c.programadoEnd || '',
+      'Salida real': '',
+      'Diff salida (min)': '',
+      'Horas trabajadas': '',
+    }
+  }
+  const estadoStr =
+    c.motivoColor === 'aTiempo' ? 'A tiempo' :
+    c.motivoColor === 'tardeEntrada' ? `Tarde entrada (+${c.mins}min)` :
+    c.motivoColor === 'salidaTemprana' ? `Salió ${Math.abs(c.minSalidaDiff || 0)}min antes` :
+    c.motivoColor === 'extras' ? `Quedó +${c.minSalidaDiff || 0}min extras` :
+    c.motivoColor === 'sinSalida' ? 'Sin salida (activo)' : '—'
+  return {
+    Fecha: c.dayStr,
+    Empleado: empleado.fullName,
+    Cargo: empleado.position || '',
+    Local: nombreLocal,
+    Estado: estadoStr,
+    'Programado entrada': c.programadoStart || '',
+    'Entrada real': c.fichaje?.clockIn ? formatHora(c.fichaje.clockIn) : '',
+    'Min tarde': c.mins || 0,
+    'Programado salida': c.programadoEnd || '',
+    'Salida real': c.fichaje?.clockOut ? formatHora(c.fichaje.clockOut) : '',
+    'Diff salida (min)': c.minSalidaDiff != null ? c.minSalidaDiff : '',
+    'Horas trabajadas': c.horas != null ? c.horas.toFixed(2) : '',
+  }
+}
+
+const EXPORT_COLUMNS = [
+  { label: 'Fecha', accessor: 'Fecha' },
+  { label: 'Empleado', accessor: 'Empleado' },
+  { label: 'Cargo', accessor: 'Cargo' },
+  { label: 'Local', accessor: 'Local' },
+  { label: 'Estado', accessor: 'Estado' },
+  { label: 'Programado entrada', accessor: 'Programado entrada' },
+  { label: 'Entrada real', accessor: 'Entrada real' },
+  { label: 'Min tarde', accessor: 'Min tarde' },
+  { label: 'Programado salida', accessor: 'Programado salida' },
+  { label: 'Salida real', accessor: 'Salida real' },
+  { label: 'Diff salida (min)', accessor: 'Diff salida (min)' },
+  { label: 'Horas trabajadas', accessor: 'Horas trabajadas' },
+]
+
+export function AttendanceTable({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, cfg, group }) {
   const [modo, setModo] = useState('semana')
   const [offset, setOffset] = useState(0) // significado depende del modo
+  const [detalle, setDetalle] = useState(null) // { celda, empleado }
 
-  // Header navegación: misma lógica para todos los modos
-  function ir(delta) {
-    setOffset(o => o + delta)
-  }
+  function ir(delta) { setOffset(o => o + delta) }
   function hoy() { setOffset(0) }
+
+  const nombreLocal = cfg?.config?.locales?.[group?.id]?.name || group?.name || 'local'
 
   return (
     <div className="surface p-5 grain">
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
           <h3 className="font-display font-semibold text-lg">Asistencia</h3>
-          <p className="text-xs text-ink-300 mt-0.5">Cambia entre vista diaria, semanal o mensual</p>
+          <p className="text-xs text-ink-300 mt-0.5">Click en una celda para ver detalle, condonar o entender el color</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex gap-1 bg-bg-700/50 p-1 rounded-xl border border-white/5">
@@ -59,44 +160,76 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
 
       {modo === 'dia' && (
         <DiaView empleados={empleados} attendance={attendance} schedules={schedules}
-                 condonaciones={condonaciones} turnos={turnos} personOverrides={personOverrides} offset={offset} />
+                 condonaciones={condonaciones} turnos={turnos} personOverrides={personOverrides}
+                 offset={offset} onCelda={(c, emp) => setDetalle({ celda: c, empleado: emp })}
+                 nombreLocal={nombreLocal} />
       )}
       {modo === 'semana' && (
         <SemanaView empleados={empleados} attendance={attendance} schedules={schedules}
-                    condonaciones={condonaciones} turnos={turnos} personOverrides={personOverrides} offset={offset} />
+                    condonaciones={condonaciones} turnos={turnos} personOverrides={personOverrides}
+                    offset={offset} onCelda={(c, emp) => setDetalle({ celda: c, empleado: emp })}
+                    nombreLocal={nombreLocal} />
       )}
       {modo === 'mes' && (
         <MesView empleados={empleados} attendance={attendance} schedules={schedules}
-                 condonaciones={condonaciones} turnos={turnos} personOverrides={personOverrides} offset={offset} />
+                 condonaciones={condonaciones} turnos={turnos} personOverrides={personOverrides}
+                 offset={offset} onCelda={(c, emp) => setDetalle({ celda: c, empleado: emp })}
+                 nombreLocal={nombreLocal} />
       )}
 
-      <div className="flex items-center gap-4 mt-5 pt-4 border-t border-white/5 text-xs text-ink-300 flex-wrap">
+      <div className="flex items-center gap-x-4 gap-y-2 mt-5 pt-4 border-t border-white/5 text-xs text-ink-300 flex-wrap">
+        <span className="font-medium text-ink-200">ENTRADA:</span>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-good" /> A tiempo</span>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-warn" /> Tarde &lt;15min</span>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-bad" /> Tarde 15min+ / falta</span>
         <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-idle/50" /> Día libre</span>
+        <span className="font-medium text-ink-200 ml-2">SALIDA:</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: '#0ea5e9' }} /> Hizo extras</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: '#a855f7' }} /> Salió antes</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: '#6b6b73' }} /> Sin salida</span>
       </div>
+
+      {detalle && (
+        <CeldaDetalleModal
+          celda={detalle.celda}
+          empleado={detalle.empleado}
+          cfg={cfg}
+          onClose={() => setDetalle(null)}
+        />
+      )}
     </div>
   )
 }
 
 // ============== VISTA DÍA ==============
 
-function DiaView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset }) {
+function DiaView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset, onCelda, nombreLocal }) {
   const dia = useMemo(() => addDays(new Date(), offset), [offset])
   const filas = useMemo(
     () => vistaDia({ empleados, attendance, schedules, dia, condonaciones, turnos, personOverrides }),
     [empleados, attendance, schedules, dia, condonaciones, turnos, personOverrides]
   )
 
+  const exportRows = useMemo(
+    () => filas.map(f => celdaToRow(f.empleado, f, nombreLocal)),
+    [filas, nombreLocal]
+  )
+  const fileBase = `asistencia_${nombreLocal.replace(/[^a-z0-9]+/gi, '_')}_dia_${format(dia, 'dd-MM-yyyy')}`
+
   return (
     <>
-      <div className="mb-3">
-        <h4 className="font-display font-semibold">{format(dia, 'EEEE dd MMMM yyyy')}</h4>
-        <p className="text-xs text-ink-300 mt-0.5">{filas.filter(f => f.fichaje).length} fichados · {filas.filter(f => f.falto).length} faltaron · {filas.filter(f => f.state === 'idle' && !f.falto).length} día libre</p>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <h4 className="font-display font-semibold capitalize">{format(dia, 'EEEE dd MMMM yyyy')}</h4>
+          <p className="text-xs text-ink-300 mt-0.5">{filas.filter(f => f.fichaje).length} fichados · {filas.filter(f => f.falto).length} faltaron · {filas.filter(f => f.state === 'idle' && !f.falto).length} día libre</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-xs"><Download size={14} /> CSV</button>
+          <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-xs"><FileSpreadsheet size={14} /> Excel</button>
+        </div>
       </div>
       <div className="overflow-x-auto scrollbar-thin">
-        <table className="w-full min-w-[700px] text-sm">
+        <table className="w-full min-w-[800px] text-sm">
           <thead>
             <tr className="text-left">
               {['Empleado', 'Programado', 'Entrada real', 'Salida real', 'Horas', 'Estado'].map(h => (
@@ -105,41 +238,65 @@ function DiaView({ empleados, attendance, schedules, condonaciones, turnos, pers
             </tr>
           </thead>
           <tbody>
-            {filas.map(({ empleado, fichaje, programadoStart, programadoEnd, state, mins, falto, horas, turnoCustom }) => (
-              <tr key={empleado.id} className="border-t border-white/5 hover:bg-bg-700/30 transition">
-                <td className="py-3">
-                  <div className="flex items-center gap-2.5">
-                    <Avatar name={empleado.fullName} id={empleado.id} size="sm" />
-                    <div>
-                      <div className="text-ink-50">{empleado.fullName}</div>
-                      <div className="text-xs text-ink-300">{empleado.position || '—'}</div>
+            {filas.map((fila) => {
+              const { empleado, fichaje, programadoStart, programadoEnd, mins, salidaState, minSalidaDiff, falto, horas, turnoCustom, motivoColor } = fila
+              return (
+                <tr key={empleado.id} className="border-t border-white/5 hover:bg-bg-700/30 transition cursor-pointer" onClick={() => onCelda(fila, empleado)}>
+                  <td className="py-3">
+                    <div className="flex items-center gap-2.5">
+                      <Avatar name={empleado.fullName} id={empleado.id} size="sm" />
+                      <div>
+                        <div className="text-ink-50">{empleado.fullName}</div>
+                        <div className="text-xs text-ink-300">{empleado.position || '—'}</div>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="py-3 font-mono text-ink-100">
-                  {programadoStart
-                    ? <>
-                        {programadoStart}–{programadoEnd}
-                        {turnoCustom && <span className="ml-1 badge bg-accent/15 text-accent text-[10px]">turno</span>}
-                      </>
-                    : <span className="text-ink-400">Día libre</span>}
-                </td>
-                <td className="py-3 font-mono text-ink-100">
-                  {fichaje?.clockIn ? formatHora(fichaje.clockIn) : <span className="text-ink-400">—</span>}
-                </td>
-                <td className="py-3 font-mono text-ink-100">
-                  {fichaje?.clockOut ? formatHora(fichaje.clockOut) : (fichaje ? <span className="text-warn">activo</span> : <span className="text-ink-400">—</span>)}
-                </td>
-                <td className="py-3 font-mono text-ink-100">{horas != null ? formatHoras(horas) : <span className="text-ink-400">—</span>}</td>
-                <td className="py-3">
-                  {falto && <span className="badge bg-bad/15 text-bad">No fichó</span>}
-                  {!falto && state === 'good' && <span className="badge bg-good/15 text-good">A tiempo</span>}
-                  {!falto && state === 'warn' && <span className="badge bg-warn/15 text-warn">+{mins}min tarde</span>}
-                  {!falto && state === 'bad' && <span className="badge bg-bad/15 text-bad">+{mins}min tarde</span>}
-                  {!falto && state === 'idle' && <span className="text-ink-400 text-xs">—</span>}
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="py-3 font-mono text-ink-100">
+                    {programadoStart
+                      ? <>
+                          {programadoStart}–{programadoEnd}
+                          {turnoCustom && <span className="ml-1 badge bg-accent/15 text-accent text-[10px]">turno</span>}
+                        </>
+                      : <span className="text-ink-400">Día libre</span>}
+                  </td>
+                  <td className="py-3 font-mono text-ink-100">
+                    {fichaje?.clockIn ? formatHora(fichaje.clockIn) : <span className="text-ink-400">—</span>}
+                  </td>
+                  <td className="py-3 font-mono text-ink-100">
+                    {fichaje?.clockOut ? formatHora(fichaje.clockOut) : (fichaje ? <span className="text-warn">activo</span> : <span className="text-ink-400">—</span>)}
+                  </td>
+                  <td className="py-3 font-mono text-ink-100">{horas != null ? formatHoras(horas) : <span className="text-ink-400">—</span>}</td>
+                  <td className="py-3">
+                    {falto && <span className="badge bg-bad/15 text-bad">No fichó</span>}
+                    {!falto && motivoColor === 'aTiempo' && <span className="badge bg-good/15 text-good">A tiempo</span>}
+                    {!falto && (motivoColor === 'tardeEntrada' || motivoColor === 'sinSalida' || motivoColor === 'salidaTemprana' || motivoColor === 'extras') && (
+                      <div className="flex flex-col gap-1 items-start">
+                        {/* Entrada chip */}
+                        {mins > 0 && (
+                          <span className={`badge ${mins >= 15 ? 'bg-bad/15 text-bad' : 'bg-warn/15 text-warn'}`}>
+                            +{mins}min tarde
+                          </span>
+                        )}
+                        {mins === 0 && motivoColor !== 'falta' && (
+                          <span className="badge bg-good/15 text-good">Entrada puntual</span>
+                        )}
+                        {/* Salida chip */}
+                        {salidaState === 'extras' && (
+                          <span className="badge bg-accent/15 text-accent-400">+{minSalidaDiff}min extras</span>
+                        )}
+                        {salidaState === 'temprano' && (
+                          <span className="badge bg-warn/15 text-warn">{minSalidaDiff}min antes</span>
+                        )}
+                        {salidaState === 'sinSalida' && (
+                          <span className="badge bg-warn/15 text-warn">Sin salida</span>
+                        )}
+                      </div>
+                    )}
+                    {!falto && motivoColor === 'idle' && <span className="text-ink-400 text-xs">—</span>}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -149,7 +306,7 @@ function DiaView({ empleados, attendance, schedules, condonaciones, turnos, pers
 
 // ============== VISTA SEMANA ==============
 
-function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset }) {
+function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset, onCelda, nombreLocal }) {
   const ini = useMemo(() => addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), offset * 7), [offset])
   const data = useMemo(
     () => tablaSemanal({ empleados, attendance, schedules, ini, condonaciones, turnos, personOverrides }),
@@ -157,11 +314,26 @@ function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, p
   )
   const dayLabels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
+  const exportRows = useMemo(() => {
+    const out = []
+    for (const fila of data.filas) {
+      for (const c of fila.cells) {
+        out.push(celdaToRow(fila.empleado, c, nombreLocal))
+      }
+    }
+    return out
+  }, [data, nombreLocal])
+  const fileBase = `asistencia_${nombreLocal.replace(/[^a-z0-9]+/gi, '_')}_sem_${format(ini, 'dd-MM-yyyy')}`
+
   return (
     <>
-      <p className="text-xs text-ink-300 mb-3">
-        Semana del {format(ini, 'dd MMM')} al {format(addDays(ini, 6), 'dd MMM yyyy')}
-      </p>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <p className="text-xs text-ink-300">Semana del {format(ini, 'dd MMM')} al {format(addDays(ini, 6), 'dd MMM yyyy')}</p>
+        <div className="flex gap-2">
+          <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-xs"><Download size={14} /> CSV</button>
+          <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-xs"><FileSpreadsheet size={14} /> Excel</button>
+        </div>
+      </div>
       <div className="overflow-x-auto scrollbar-thin">
         <table className="w-full min-w-[600px]">
           <thead>
@@ -188,14 +360,32 @@ function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, p
                     </div>
                   </div>
                 </td>
-                {cells.map((c, i) => (
-                  <td key={i} className="text-center py-3" title={c.fichaje ? `${formatHoras(c.horas || 0)}${c.mins ? ` · +${c.mins}min tarde` : ''}` : c.falto ? 'No fichó' : 'Día libre'}>
-                    <div className="flex flex-col items-center gap-1">
-                      <span className={`w-2.5 h-2.5 rounded-full ${colorState[c.state]}`} />
-                      <span className="text-[11px] text-ink-300 font-mono">{c.horas ? c.horas.toFixed(1) : c.falto ? '—' : '·'}</span>
-                    </div>
-                  </td>
-                ))}
+                {cells.map((c, i) => {
+                  const isClickable = c.fichaje || c.falto
+                  const dotSalidaColor = colorDotSalida(c.salidaState)
+                  const fechaLabel = `${dayLabels[i]} ${format(c.day, 'dd MMM')}`
+                  return (
+                    <td
+                      key={i}
+                      className={`text-center py-3 ${isClickable ? 'cursor-pointer hover:bg-bg-600/30 rounded-md' : ''}`}
+                      title={tooltipCelda(c, fechaLabel)}
+                      onClick={() => isClickable && onCelda(c, empleado)}
+                    >
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="relative">
+                          <span className={`block w-2.5 h-2.5 rounded-full ${colorState[c.state]}`} />
+                          {dotSalidaColor && (
+                            <span
+                              className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ring-1 ring-bg-800"
+                              style={{ background: dotSalidaColor }}
+                            />
+                          )}
+                        </div>
+                        <span className="text-[11px] text-ink-300 font-mono">{c.horas ? c.horas.toFixed(1) : c.falto ? '—' : '·'}</span>
+                      </div>
+                    </td>
+                  )
+                })}
                 <td className="text-right py-3 font-display font-semibold text-ink-50">{formatHoras(totalHoras)}</td>
               </tr>
             ))}
@@ -208,26 +398,42 @@ function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, p
 
 // ============== VISTA MES ==============
 
-function MesView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset }) {
+function MesView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset, onCelda, nombreLocal }) {
   const mes = useMemo(() => addMonths(startOfMonth(new Date()), offset), [offset])
   const data = useMemo(
     () => tablaMensual({ empleados, attendance, schedules, mes, condonaciones, turnos, personOverrides }),
     [empleados, attendance, schedules, mes, condonaciones, turnos, personOverrides]
   )
 
-  // Totales globales del local
   const totalEmp = data.filas.length
   const totalATiempo = data.filas.reduce((a, f) => a + f.aTiempo, 0)
   const totalTardanzas = data.filas.reduce((a, f) => a + f.tardanzas, 0)
   const totalHorasMes = data.filas.reduce((a, f) => a + f.totalHoras, 0)
 
+  const exportRows = useMemo(() => {
+    const out = []
+    for (const fila of data.filas) {
+      for (const c of fila.cells) {
+        out.push(celdaToRow(fila.empleado, c, nombreLocal))
+      }
+    }
+    return out
+  }, [data, nombreLocal])
+  const fileBase = `asistencia_${nombreLocal.replace(/[^a-z0-9]+/gi, '_')}_mes_${format(mes, 'MM-yyyy')}`
+
   return (
     <>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
         <h4 className="font-display font-semibold capitalize">{format(mes, 'MMMM yyyy')}</h4>
-        <p className="text-xs text-ink-300">
-          {totalEmp} empleados · <span className="text-good">{totalATiempo}</span> a tiempo · <span className="text-bad">{totalTardanzas}</span> tarde · {formatHoras(totalHorasMes)} totales
-        </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <p className="text-xs text-ink-300">
+            {totalEmp} empleados · <span className="text-good">{totalATiempo}</span> a tiempo · <span className="text-bad">{totalTardanzas}</span> tarde · {formatHoras(totalHorasMes)} totales
+          </p>
+          <div className="flex gap-2">
+            <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-xs"><Download size={14} /> CSV</button>
+            <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-xs"><FileSpreadsheet size={14} /> Excel</button>
+          </div>
+        </div>
       </div>
       <div className="overflow-x-auto scrollbar-thin">
         <table className="w-full text-sm">
@@ -257,12 +463,28 @@ function MesView({ empleados, attendance, schedules, condonaciones, turnos, pers
                     </div>
                   </div>
                 </td>
-                {cells.map((c, i) => (
-                  <td key={i} className="text-center py-2 px-0.5"
-                      title={c.fichaje ? `${formatFechaCorta(c.dayStr)}: ${formatHoras(c.horas || 0)}${c.mins ? ` · +${c.mins}min` : ''}` : c.falto ? 'No fichó' : 'Día libre'}>
-                    <span className={`inline-block w-2 h-2 rounded-full ${colorState[c.state]}`} />
-                  </td>
-                ))}
+                {cells.map((c, i) => {
+                  const isClickable = c.fichaje || c.falto
+                  const dotSalidaColor = colorDotSalida(c.salidaState)
+                  return (
+                    <td
+                      key={i}
+                      className={`text-center py-2 px-0.5 ${isClickable ? 'cursor-pointer' : ''}`}
+                      title={tooltipCelda(c, formatFechaCorta(c.dayStr))}
+                      onClick={() => isClickable && onCelda(c, empleado)}
+                    >
+                      <span className="relative inline-block">
+                        <span className={`inline-block w-2 h-2 rounded-full ${colorState[c.state]}`} />
+                        {dotSalidaColor && (
+                          <span
+                            className="absolute -bottom-0.5 -right-0.5 w-1 h-1 rounded-full ring-1 ring-bg-800"
+                            style={{ background: dotSalidaColor }}
+                          />
+                        )}
+                      </span>
+                    </td>
+                  )
+                })}
                 <td className="text-right py-2 pl-3 font-display font-semibold text-ink-50 sticky right-0 bg-bg-800/95">
                   {formatHoras(totalHoras)}
                 </td>

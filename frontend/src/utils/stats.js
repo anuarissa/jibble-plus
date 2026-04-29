@@ -2,7 +2,7 @@
 // Consolida lógica que necesitan Dashboard, vistas por restaurante y comparativos.
 
 import { startOfWeek, endOfWeek, format, isWithinInterval, parseISO, addDays, startOfMonth, endOfMonth, getDaysInMonth, getDate } from 'date-fns'
-import { detectarTardanzasEnRango, minutosTarde } from './lateness'
+import { detectarTardanzasEnRango, minutosTarde, minutosDiff } from './lateness'
 import { planillaEmpleado, sumarHoras } from './payroll'
 import { isoWeekKey, dayOfWeek, getTurnoEfectivo, getDefaultParaDia, normalizarCelda } from './turnos'
 
@@ -162,8 +162,14 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
   }
 
   if (!programado) return { state: 'idle', day, dayStr }
-  if (!fich) return { state: 'idle', day, dayStr, falto: true, programadoStart: startTimeProgramado, programadoEnd: endTimeProgramado }
+  if (!fich) return {
+    state: 'idle', day, dayStr, falto: true,
+    motivoColor: 'falta',
+    programadoStart: startTimeProgramado,
+    programadoEnd: endTimeProgramado,
+  }
 
+  // ENTRADA
   let state = 'good'
   let mins = 0
   if (startTimeProgramado && fich.clockIn) {
@@ -171,6 +177,32 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
     if (mins > 0) state = mins < 15 ? 'warn' : 'bad'
     if (condonaciones?.[fich.id]?.condonada) state = 'good'
   }
+
+  // SALIDA: comparar clockOut vs endTimeProgramado
+  // Tolerancia: ±5 min se considera "a tiempo".
+  const SALIDA_TOLERANCE = 5
+  let salidaState = null     // 'aTiempo' | 'temprano' | 'extras' | 'sinSalida'
+  let minSalidaDiff = null   // signo: + = se quedó después, - = se fue antes
+  if (!fich.clockOut && fich.clockIn) {
+    salidaState = 'sinSalida'
+  } else if (fich.clockOut && endTimeProgramado) {
+    const diff = minutosDiff(endTimeProgramado, fich.clockOut)
+    if (diff != null) {
+      minSalidaDiff = diff
+      if (diff > SALIDA_TOLERANCE) salidaState = 'extras'
+      else if (diff < -SALIDA_TOLERANCE) salidaState = 'temprano'
+      else salidaState = 'aTiempo'
+    }
+  }
+
+  // motivoColor combinado: prioriza la "razón principal" para visualización rápida.
+  // Orden: falta > tardeEntrada > sinSalida > salidaTemprana > extras > aTiempo
+  let motivoColor = 'aTiempo'
+  if (mins > 0) motivoColor = 'tardeEntrada'
+  else if (salidaState === 'sinSalida') motivoColor = 'sinSalida'
+  else if (salidaState === 'temprano') motivoColor = 'salidaTemprana'
+  else if (salidaState === 'extras') motivoColor = 'extras'
+
   const horas = fich.clockOut
     ? (new Date(fich.clockOut) - new Date(fich.clockIn)) / 3600000
     : null
@@ -178,6 +210,9 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
     state, day, dayStr, fichaje: fich, horas, mins,
     programadoStart: startTimeProgramado,
     programadoEnd: endTimeProgramado,
+    salidaState,
+    minSalidaDiff,
+    motivoColor,
     turnoCustom,
   }
 }

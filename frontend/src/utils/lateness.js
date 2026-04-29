@@ -52,6 +52,26 @@ export function severidad(minutosTarde) {
   return 'bad'
 }
 
+// Diferencia con SIGNO entre hora programada (HH:MM, hora Bolivia) y hora real (ISO timestamp UTC).
+//   - Positivo: real fue DESPUÉS de la programada (tarde si es entrada, extras si es salida)
+//   - Negativo: real fue ANTES (temprano)
+//   - 0: a tiempo
+// Misma lógica que minutosTarde pero conserva el signo.
+export function minutosDiff(scheduledTime, realISO) {
+  if (!scheduledTime || !realISO) return null
+  const [sh, sm] = scheduledTime.split(':').map(Number)
+  const real = new Date(realISO)
+  if (isNaN(real)) return null
+  const BOLIVIA_OFFSET_HOURS = 4
+  const realUtcMs = real.getTime()
+  const realInBolivia = new Date(realUtcMs - BOLIVIA_OFFSET_HOURS * 3600000)
+  const y = realInBolivia.getUTCFullYear()
+  const m = realInBolivia.getUTCMonth()
+  const d = realInBolivia.getUTCDate()
+  const programadaUtc = Date.UTC(y, m, d, sh + BOLIVIA_OFFSET_HOURS, sm, 0)
+  return Math.round((realUtcMs - programadaUtc) / 60000)
+}
+
 // Convierte un fichaje crudo a un objeto tardanza completo.
 // scheduledStartOverride: si existe, prevalece sobre schedule.startTime
 //   (lo usa la lógica de turnos rotativos: cada día puede tener distinta hora).
