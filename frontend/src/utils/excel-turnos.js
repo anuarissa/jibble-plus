@@ -168,6 +168,7 @@ function parseFormatoAnuar(rows, empleados) {
   const aplicarPorSemana = {} // { weekKey: { personId: { dow: valor } } }
   const warnings = []
   const noEncontrados = new Set()
+  const ambiguos = new Map() // nombreRaw → [empleados que matchean]
   let celdasOk = 0
   let celdasIgnoradas = 0
   const semanasDetectadas = new Set()
@@ -222,12 +223,15 @@ function parseFormatoAnuar(rows, empleados) {
         if (!filaSalida || String(filaSalida[3] || '').trim().toUpperCase() !== 'SALIDA') {
           j++; continue
         }
-        const nombreRaw = String(r[1] || '').trim()
+        // El nombre puede estar en la fila ENTRADA o en la fila SALIDA (algunos
+        // archivos lo "centran verticalmente" escribiéndolo en la fila de abajo).
+        let nombreRaw = String(r[1] || '').trim()
+        if (!nombreRaw) nombreRaw = String(filaSalida[1] || '').trim()
         if (!nombreRaw) { j += 3; continue }
 
-        const emp = matchEmpleado(empByNombre, nombreRaw)
+        const emp = matchEmpleado(empByNombre, nombreRaw, ambiguos)
         if (!emp) {
-          noEncontrados.add(nombreRaw)
+          if (!ambiguos.has(nombreRaw)) noEncontrados.add(nombreRaw)
           j += 3
           continue
         }
@@ -261,6 +265,11 @@ function parseFormatoAnuar(rows, empleados) {
   if (noEncontrados.size > 0) {
     warnings.push(`Empleados no encontrados en la app: ${[...noEncontrados].join(', ')}`)
   }
+  if (ambiguos.size > 0) {
+    for (const [raw, matches] of ambiguos) {
+      warnings.push(`"${raw}" en el Excel es ambiguo — matchea con ${matches.map(m => m.fullName).join(' y ')}. Escribí el nombre completo en el Excel para diferenciarlos.`)
+    }
+  }
   if (semanasDetectadas.size > 1) {
     warnings.push(`Detectadas ${semanasDetectadas.size} semanas distintas en el archivo: ${[...semanasDetectadas].join(', ')}`)
   }
@@ -269,13 +278,22 @@ function parseFormatoAnuar(rows, empleados) {
 }
 
 // Match flexible: nombre exacto > primer nombre exacto > substring
-function matchEmpleado(empByNombre, raw) {
+// ambiguousOut (Map opcional): si el nombre matchea a varios empleados por primer
+// nombre, se registra ahí y matchEmpleado devuelve null para evitar aplicar al
+// equivocado. El caller usa el map para generar un warning.
+function matchEmpleado(empByNombre, raw, ambiguousOut = null) {
   const norm = normalizar(raw)
   if (empByNombre.has(norm)) return empByNombre.get(norm)
   const firstWord = norm.split(' ')[0]
-  // Match exacto por primer nombre
+  // Match exacto por primer nombre — pero si hay varios, es ambiguo
+  const matches = []
   for (const [k, v] of empByNombre) {
-    if (k.split(' ')[0] === firstWord) return v
+    if (k.split(' ')[0] === firstWord) matches.push(v)
+  }
+  if (matches.length === 1) return matches[0]
+  if (matches.length > 1) {
+    if (ambiguousOut) ambiguousOut.set(raw, matches)
+    return null
   }
   // Substring (cuidado: solo si el Excel name es >= 4 chars)
   if (norm.length >= 4) {

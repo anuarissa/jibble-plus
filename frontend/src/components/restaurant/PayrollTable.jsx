@@ -79,7 +79,7 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
             personId: fila.personId, fullName: fila.fullName, position: fila.position, tarifa: fila.tarifa,
             horasTotales: 0, horasNormales: 0, horasExtra: 0,
             baseTarifa: 0, extraTarifa: 0, bruto: 0,
-            descuentoTardanza: 0, totalAPagar: 0,
+            descuentoTardanza: 0, minutosTardeTotales: 0, totalAPagar: 0,
             cantidadTardanzas: 0, tardanzasCondonadas: 0,
           }
         }
@@ -91,6 +91,7 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
         a.extraTarifa += fila.extraTarifa
         a.bruto += fila.bruto
         a.descuentoTardanza += fila.descuentoTardanza
+        a.minutosTardeTotales += fila.minutosTardeTotales || 0
         a.totalAPagar += fila.totalAPagar
         a.cantidadTardanzas += fila.cantidadTardanzas
         a.tardanzasCondonadas += fila.tardanzasCondonadas
@@ -123,15 +124,17 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
   }, [empleados, attendance, schedules, cfg.tarifas, cfg.personOverrides, cfg.condonaciones, cfg.turnos, ini, fin, modo, group.id, cfg.config.settings.multiplicadorExtra])
 
   const exportColumns = [
-    { label: 'Empleado', accessor: 'fullName' },
-    { label: 'Cargo', accessor: 'position' },
-    { label: 'Tarifa/h', accessor: 'tarifa' },
-    { label: 'Horas totales', accessor: 'horasTotales' },
-    { label: 'Horas normales', accessor: 'horasNormales' },
-    { label: 'Horas extra', accessor: 'horasExtra' },
-    { label: 'Bruto', accessor: 'bruto' },
-    { label: 'Descuento tardanza', accessor: 'descuentoTardanza' },
-    { label: 'Total a pagar', accessor: 'totalAPagar' },
+    { label: 'Empleado', accessor: 'fullName', width: 26 },
+    { label: 'Cargo', accessor: 'position', width: 16 },
+    { label: 'Tarifa/h (Bs)', accessor: 'tarifa', width: 12, numFmt: '0.00' },
+    { label: 'Horas totales', accessor: 'horasTotales', width: 13, numFmt: '0.00' },
+    { label: 'Horas normales', accessor: 'horasNormales', width: 14, numFmt: '0.00' },
+    { label: 'Horas extra', accessor: 'horasExtra', width: 12, numFmt: '0.00' },
+    { label: 'Bruto (Bs)', accessor: 'bruto', width: 12, numFmt: '"Bs" #,##0.00' },
+    { label: 'Min tarde', accessor: r => r.minutosTardeTotales || 0, width: 10, numFmt: '0' },
+    { label: 'Tarifa multa', accessor: () => '10 Bs / 5 min iniciados', width: 22 },
+    { label: 'Descuento tardanza (Bs)', accessor: 'descuentoTardanza', width: 18, numFmt: '"Bs" #,##0.00' },
+    { label: 'Total a pagar (Bs)', accessor: 'totalAPagar', width: 16, numFmt: '"Bs" #,##0.00' },
   ]
   const fileBase = `planilla_${(cfg.config.locales[group.id]?.name || group.name || 'local').replace(/[^a-z0-9]+/gi, '_')}_${fileLabel}`
 

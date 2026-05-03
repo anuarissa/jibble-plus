@@ -18,6 +18,8 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
   const [editingNota, setEditingNota] = useState(null) // { personId, dow }
   // Buffer de cambios pendientes — { [personId]: { [dow]: valor | DELETE } }
   const [pending, setPending] = useState({})
+  // Avisos persistentes del último import (empleados no encontrados, celdas mal formateadas, etc.)
+  const [importWarnings, setImportWarnings] = useState([])
   const fileInputRef = useRef(null)
 
   const ini = useMemo(() => addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), offset * 7), [offset])
@@ -114,20 +116,60 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
         toast.error('No se pudo aplicar ninguna celda. Revisa el formato.')
         return
       }
-      for (const [wk, datos] of semanasAplicar) {
-        cfg.setTurnosSemana(wk, datos)
+
+      // Si hay pending sin guardar, confirmar antes de pisarlos.
+      if (pendingCount > 0) {
+        if (!confirm(`Tienes ${pendingCount} cambios sin guardar. ¿Reemplazarlos por la importación?`)) return
       }
-      // Importar Excel guarda directo (no usa el buffer pending — flujo masivo)
-      setPending({})
-      const formatoLabel = result.formato === 'anuar' ? '(formato planilla)' : '(template)'
-      const semsLabel = semanasAplicar.length > 1 ? ` en ${semanasAplicar.length} semanas` : ''
-      toast.success(`${result.celdasOk} turnos cargados${semsLabel} ${formatoLabel}`, { duration: 5000 })
-      if (result.warnings.length > 0) {
-        result.warnings.slice(0, 5).forEach(w => toast.warning(w, { duration: 6000 }))
-        if (result.warnings.length > 5) {
-          toast.message(`+ ${result.warnings.length - 5} avisos más en consola`, { duration: 4000 })
-          result.warnings.forEach(w => console.warn('[Excel import]', w))
+
+      // Otras semanas (no visibles) → guardar directo. La visible va al buffer pending.
+      let directas = 0
+      const semanasDirectas = []
+      for (const [wk, datos] of semanasAplicar) {
+        if (wk !== weekKey) {
+          cfg.setTurnosSemana(wk, datos)
+          for (const pid of Object.keys(datos)) directas += Object.keys(datos[pid]).length
+          semanasDirectas.push(wk)
         }
+      }
+
+      // Convertir los datos de la semana visible a shape pending, filtrando los que
+      // ya coinciden con lo guardado (no son cambios reales).
+      const datosVisible = result.aplicarPorSemana[weekKey] || {}
+      const nuevoPending = {}
+      let buffered = 0
+      for (const pid of Object.keys(datosVisible)) {
+        const persona = {}
+        for (const dow of Object.keys(datosVisible[pid])) {
+          const v = datosVisible[pid][dow]
+          const original = semanaTurnos[pid]?.[dow]
+          if (JSON.stringify(v) !== JSON.stringify(original)) {
+            persona[dow] = v
+            buffered++
+          }
+        }
+        if (Object.keys(persona).length > 0) nuevoPending[pid] = persona
+      }
+      setPending(nuevoPending)
+
+      const formatoLabel = result.formato === 'anuar' ? '(formato planilla)' : '(template)'
+      if (semanasDirectas.length === 0) {
+        if (buffered === 0) {
+          toast.message(`Excel sin cambios respecto a lo guardado ${formatoLabel}`, { duration: 5000 })
+        } else {
+          toast.success(`${buffered} turnos cargados en preview. Apretá Guardar para confirmar. ${formatoLabel}`, { duration: 6000 })
+        }
+      } else if (buffered === 0) {
+        toast.success(`${directas} turnos guardados en ${semanasDirectas.length} ${semanasDirectas.length === 1 ? 'semana distinta' : 'semanas distintas'} a la actual ${formatoLabel}`, { duration: 5000 })
+      } else {
+        toast.success(`${buffered} turnos en preview (semana actual) + ${directas} guardados en ${semanasDirectas.length === 1 ? 'otra semana' : 'otras semanas'}. ${formatoLabel}`, { duration: 6000 })
+      }
+
+      // Persistir warnings (empleados no encontrados, celdas mal formateadas) en panel visible.
+      // Reemplazan los del import anterior. Si no hay, limpiar.
+      setImportWarnings(result.warnings || [])
+      if (result.warnings.length > 0) {
+        result.warnings.forEach(w => console.warn('[Excel import]', w))
       }
     } catch (err) {
       toast.error('Error leyendo Excel: ' + err.message)
@@ -238,6 +280,31 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
                 <Save size={13} /> Guardar todos
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Avisos del último import (empleados no encontrados, etc.) — persistentes hasta cerrar */}
+      {importWarnings.length > 0 && (
+        <div className="mb-4 rounded-xl border border-warn/40 bg-warn/5">
+          <div className="p-3 flex items-start gap-3">
+            <AlertCircle size={18} className="text-warn mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-ink-50 text-sm mb-1">
+                Avisos del Excel importado ({importWarnings.length})
+              </div>
+              <ul className="text-sm text-ink-200 space-y-1 list-disc pl-4">
+                {importWarnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+              <div className="text-xs text-ink-300 mt-2">
+                La importación cargó solo los empleados que sí están en el sistema. Revisa los nombres si falta alguien.
+              </div>
+            </div>
+            <button onClick={() => setImportWarnings([])} className="btn-ghost p-1.5 shrink-0" title="Cerrar avisos">
+              <X size={16} />
+            </button>
           </div>
         </div>
       )}

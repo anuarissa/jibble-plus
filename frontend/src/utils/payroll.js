@@ -40,6 +40,7 @@ export function planillaEmpleado(empleado, fichajes, tardanzas, config = {}) {
 
   const tardanzasActivas = tardanzas.filter(t => !t.condonada)
   const descuentoTardanza = tardanzasActivas.reduce((s, t) => s + (t.multa || 0), 0)
+  const minutosTardeTotales = tardanzasActivas.reduce((s, t) => s + (t.minutosTarde || 0), 0)
 
   const bruto = baseTarifa + extraTarifa
   const totalAPagar = Math.max(0, bruto - descuentoTardanza)
@@ -56,6 +57,7 @@ export function planillaEmpleado(empleado, fichajes, tardanzas, config = {}) {
     extraTarifa: round(extraTarifa, 2),
     bruto: round(bruto, 2),
     descuentoTardanza,
+    minutosTardeTotales,
     totalAPagar: round(totalAPagar, 2),
     cantidadTardanzas: tardanzas.length,
     tardanzasCondonadas: tardanzas.length - tardanzasActivas.length,

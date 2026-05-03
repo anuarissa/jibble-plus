@@ -133,8 +133,8 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
     <div className="surface p-5 grain">
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
-          <h3 className="font-display font-semibold text-lg">Asistencia</h3>
-          <p className="text-xs text-ink-300 mt-0.5">Click en una celda para ver detalle, condonar o entender el color</p>
+          <h3 className="font-display font-semibold text-xl">Asistencia</h3>
+          <p className="text-sm text-ink-200 mt-1">Click en una celda para ver detalle, condonar o entender el color</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex gap-1 bg-bg-700/50 p-1 rounded-xl border border-white/5">
@@ -142,18 +142,18 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
               <button
                 key={m.id}
                 onClick={() => { setModo(m.id); setOffset(0) }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition ${
                   modo === m.id ? 'bg-accent text-white shadow-glow' : 'text-ink-200 hover:text-ink-50'
                 }`}
               >
-                <m.icon size={13} /> {m.label}
+                <m.icon size={14} /> {m.label}
               </button>
             ))}
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => ir(-1)} className="btn-ghost p-2"><ChevronLeft size={16} /></button>
-            <button onClick={hoy} className="btn-secondary text-xs">Hoy</button>
-            <button onClick={() => ir(1)} disabled={offset >= 0} className="btn-ghost p-2 disabled:opacity-30"><ChevronRight size={16} /></button>
+            <button onClick={() => ir(-1)} className="btn-ghost p-2"><ChevronLeft size={18} /></button>
+            <button onClick={hoy} className="btn-secondary text-sm font-semibold">Hoy</button>
+            <button onClick={() => ir(1)} disabled={offset >= 0} className="btn-ghost p-2 disabled:opacity-30"><ChevronRight size={18} /></button>
           </div>
         </div>
       </div>
@@ -177,16 +177,16 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
                  nombreLocal={nombreLocal} />
       )}
 
-      <div className="flex items-center gap-x-4 gap-y-2 mt-5 pt-4 border-t border-white/5 text-xs text-ink-300 flex-wrap">
-        <span className="font-medium text-ink-200">ENTRADA:</span>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-good" /> A tiempo</span>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-warn" /> Tarde &lt;15min</span>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-bad" /> Tarde 15min+ / falta</span>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-idle/50" /> Día libre</span>
-        <span className="font-medium text-ink-200 ml-2">SALIDA:</span>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: '#0ea5e9' }} /> Hizo extras</span>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: '#a855f7' }} /> Salió antes</span>
-        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: '#6b6b73' }} /> Sin salida</span>
+      <div className="flex items-center gap-x-4 gap-y-2 mt-5 pt-4 border-t border-white/5 text-sm text-ink-200 flex-wrap">
+        <span className="font-semibold text-ink-100">ENTRADA:</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-good" /> A tiempo</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-warn" /> Tarde &lt;15min</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-bad" /> Tarde 15min+ / falta</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-idle/50" /> Día libre</span>
+        <span className="font-semibold text-ink-100 ml-2">SALIDA:</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#0ea5e9' }} /> Hizo extras</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#a855f7' }} /> Salió antes</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#6b6b73' }} /> Sin salida</span>
       </div>
 
       {detalle && (
@@ -220,20 +220,20 @@ function DiaView({ empleados, attendance, schedules, condonaciones, turnos, pers
     <>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div>
-          <h4 className="font-display font-semibold capitalize">{format(dia, 'EEEE dd MMMM yyyy')}</h4>
-          <p className="text-xs text-ink-300 mt-0.5">{filas.filter(f => f.fichaje).length} fichados · {filas.filter(f => f.falto).length} faltaron · {filas.filter(f => f.state === 'idle' && !f.falto).length} día libre</p>
+          <h4 className="font-display font-bold capitalize text-lg">{format(dia, 'EEEE dd MMMM yyyy')}</h4>
+          <p className="text-sm text-ink-200 mt-1">{filas.filter(f => f.fichaje).length} fichados · {filas.filter(f => f.falto).length} faltaron · {filas.filter(f => f.state === 'idle' && !f.falto).length} día libre</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-xs"><Download size={14} /> CSV</button>
-          <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-xs"><FileSpreadsheet size={14} /> Excel</button>
+          <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><Download size={15} /> CSV</button>
+          <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><FileSpreadsheet size={15} /> Excel</button>
         </div>
       </div>
       <div className="overflow-x-auto scrollbar-thin">
-        <table className="w-full min-w-[800px] text-sm">
+        <table className="w-full min-w-[800px] text-base">
           <thead>
             <tr className="text-left">
               {['Empleado', 'Programado', 'Entrada real', 'Salida real', 'Horas', 'Estado'].map(h => (
-                <th key={h} className="text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium">{h}</th>
+                <th key={h} className="text-sm uppercase tracking-wider text-ink-100 pb-3 font-bold">{h}</th>
               ))}
             </tr>
           </thead>
@@ -241,17 +241,17 @@ function DiaView({ empleados, attendance, schedules, condonaciones, turnos, pers
             {filas.map((fila) => {
               const { empleado, fichaje, programadoStart, programadoEnd, mins, salidaState, minSalidaDiff, falto, horas, turnoCustom, motivoColor } = fila
               return (
-                <tr key={empleado.id} className="border-t border-white/5 hover:bg-bg-700/30 transition cursor-pointer" onClick={() => onCelda(fila, empleado)}>
-                  <td className="py-3">
-                    <div className="flex items-center gap-2.5">
+                <tr key={empleado.id} className="border-t border-white/10 hover:bg-bg-700/30 transition cursor-pointer" onClick={() => onCelda(fila, empleado)}>
+                  <td className="py-3.5">
+                    <div className="flex items-center gap-3">
                       <Avatar name={empleado.fullName} id={empleado.id} size="sm" />
                       <div>
-                        <div className="text-ink-50">{empleado.fullName}</div>
-                        <div className="text-xs text-ink-300">{empleado.position || '—'}</div>
+                        <div className="text-ink-50 font-semibold text-base">{empleado.fullName}</div>
+                        <div className="text-sm text-ink-200">{empleado.position || '—'}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="py-3 font-mono text-ink-100">
+                  <td className="py-3.5 font-mono font-semibold text-ink-50">
                     {programadoStart
                       ? <>
                           {programadoStart}–{programadoEnd}
@@ -259,13 +259,13 @@ function DiaView({ empleados, attendance, schedules, condonaciones, turnos, pers
                         </>
                       : <span className="text-ink-400">Día libre</span>}
                   </td>
-                  <td className="py-3 font-mono text-ink-100">
+                  <td className="py-3.5 font-mono font-semibold text-ink-50">
                     {fichaje?.clockIn ? formatHora(fichaje.clockIn) : <span className="text-ink-400">—</span>}
                   </td>
-                  <td className="py-3 font-mono text-ink-100">
+                  <td className="py-3.5 font-mono font-semibold text-ink-50">
                     {fichaje?.clockOut ? formatHora(fichaje.clockOut) : (fichaje ? <span className="text-warn">activo</span> : <span className="text-ink-400">—</span>)}
                   </td>
-                  <td className="py-3 font-mono text-ink-100">{horas != null ? formatHoras(horas) : <span className="text-ink-400">—</span>}</td>
+                  <td className="py-3.5 font-mono font-semibold text-ink-50">{horas != null ? formatHoras(horas) : <span className="text-ink-400">—</span>}</td>
                   <td className="py-3">
                     {falto && <span className="badge bg-bad/15 text-bad">No fichó</span>}
                     {!falto && motivoColor === 'aTiempo' && <span className="badge bg-good/15 text-good">A tiempo</span>}
@@ -328,35 +328,35 @@ function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, p
   return (
     <>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <p className="text-xs text-ink-300">Semana del {format(ini, 'dd MMM')} al {format(addDays(ini, 6), 'dd MMM yyyy')}</p>
+        <p className="text-sm font-medium text-ink-200">Semana del {format(ini, 'dd MMM')} al {format(addDays(ini, 6), 'dd MMM yyyy')}</p>
         <div className="flex gap-2">
-          <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-xs"><Download size={14} /> CSV</button>
-          <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-xs"><FileSpreadsheet size={14} /> Excel</button>
+          <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><Download size={15} /> CSV</button>
+          <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><FileSpreadsheet size={15} /> Excel</button>
         </div>
       </div>
       <div className="overflow-x-auto scrollbar-thin">
-        <table className="w-full min-w-[600px]">
+        <table className="w-full min-w-[700px]">
           <thead>
             <tr className="text-left">
-              <th className="text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium">Empleado</th>
+              <th className="text-sm uppercase tracking-wider text-ink-100 pb-3 font-bold">Empleado</th>
               {data.dias.map((d, i) => (
-                <th key={i} className="text-center text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium">
+                <th key={i} className="text-center text-sm uppercase tracking-wider text-ink-100 pb-3 font-bold">
                   <div>{dayLabels[i]}</div>
-                  <div className="text-ink-400 mt-0.5">{format(d, 'dd')}</div>
+                  <div className="text-ink-50 mt-0.5 text-base font-bold">{format(d, 'dd')}</div>
                 </th>
               ))}
-              <th className="text-right text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium">Total</th>
+              <th className="text-right text-sm uppercase tracking-wider text-ink-100 pb-3 font-bold">Total</th>
             </tr>
           </thead>
           <tbody>
             {data.filas.map(({ empleado, cells, totalHoras }) => (
-              <tr key={empleado.id} className="border-t border-white/5 hover:bg-bg-700/30 transition">
-                <td className="py-3">
-                  <div className="flex items-center gap-2.5">
+              <tr key={empleado.id} className="border-t border-white/10 hover:bg-bg-700/30 transition">
+                <td className="py-3.5">
+                  <div className="flex items-center gap-3">
                     <Avatar name={empleado.fullName} id={empleado.id} size="sm" />
                     <div className="min-w-0">
-                      <div className="font-medium text-ink-50 text-sm truncate">{empleado.fullName}</div>
-                      <div className="text-xs text-ink-300">{empleado.position}</div>
+                      <div className="font-semibold text-ink-50 text-base truncate">{empleado.fullName}</div>
+                      <div className="text-sm text-ink-200">{empleado.position}</div>
                     </div>
                   </div>
                 </td>
@@ -367,26 +367,26 @@ function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, p
                   return (
                     <td
                       key={i}
-                      className={`text-center py-3 ${isClickable ? 'cursor-pointer hover:bg-bg-600/30 rounded-md' : ''}`}
+                      className={`text-center py-3.5 ${isClickable ? 'cursor-pointer hover:bg-bg-600/30 rounded-md' : ''}`}
                       title={tooltipCelda(c, fechaLabel)}
                       onClick={() => isClickable && onCelda(c, empleado)}
                     >
-                      <div className="flex flex-col items-center gap-1">
+                      <div className="flex flex-col items-center gap-1.5">
                         <div className="relative">
-                          <span className={`block w-2.5 h-2.5 rounded-full ${colorState[c.state]}`} />
+                          <span className={`block w-3 h-3 rounded-full ${colorState[c.state]}`} />
                           {dotSalidaColor && (
                             <span
-                              className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ring-1 ring-bg-800"
+                              className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-1 ring-bg-800"
                               style={{ background: dotSalidaColor }}
                             />
                           )}
                         </div>
-                        <span className="text-[11px] text-ink-300 font-mono">{c.horas ? c.horas.toFixed(1) : c.falto ? '—' : '·'}</span>
+                        <span className="text-sm text-ink-100 font-mono font-semibold">{c.horas ? c.horas.toFixed(1) : c.falto ? '—' : '·'}</span>
                       </div>
                     </td>
                   )
                 })}
-                <td className="text-right py-3 font-display font-semibold text-ink-50">{formatHoras(totalHoras)}</td>
+                <td className="text-right py-3.5 font-display font-bold text-ink-50 text-base">{formatHoras(totalHoras)}</td>
               </tr>
             ))}
           </tbody>
@@ -424,14 +424,14 @@ function MesView({ empleados, attendance, schedules, condonaciones, turnos, pers
   return (
     <>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
-        <h4 className="font-display font-semibold capitalize">{format(mes, 'MMMM yyyy')}</h4>
+        <h4 className="font-display font-bold capitalize text-lg">{format(mes, 'MMMM yyyy')}</h4>
         <div className="flex items-center gap-3 flex-wrap">
-          <p className="text-xs text-ink-300">
-            {totalEmp} empleados · <span className="text-good">{totalATiempo}</span> a tiempo · <span className="text-bad">{totalTardanzas}</span> tarde · {formatHoras(totalHorasMes)} totales
+          <p className="text-sm text-ink-200">
+            {totalEmp} empleados · <span className="text-good font-semibold">{totalATiempo}</span> a tiempo · <span className="text-bad font-semibold">{totalTardanzas}</span> tarde · <span className="font-semibold text-ink-100">{formatHoras(totalHorasMes)}</span> totales
           </p>
           <div className="flex gap-2">
-            <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-xs"><Download size={14} /> CSV</button>
-            <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-xs"><FileSpreadsheet size={14} /> Excel</button>
+            <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><Download size={15} /> CSV</button>
+            <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><FileSpreadsheet size={15} /> Excel</button>
           </div>
         </div>
       </div>
@@ -439,25 +439,25 @@ function MesView({ empleados, attendance, schedules, condonaciones, turnos, pers
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left">
-              <th className="text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium sticky left-0 bg-bg-800/95 z-10 pr-3">Empleado</th>
+              <th className="text-sm uppercase tracking-wider text-ink-100 pb-3 font-bold sticky left-0 bg-bg-800/95 z-10 pr-3">Empleado</th>
               {data.dias.map((d, i) => (
-                <th key={i} className="text-center text-[10px] uppercase tracking-wider text-ink-300 pb-3 font-medium px-0.5">
+                <th key={i} className="text-center text-xs uppercase tracking-wider text-ink-100 pb-3 font-bold px-0.5">
                   <div className="font-mono">{format(d, 'dd')}</div>
                 </th>
               ))}
-              <th className="text-right text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium pl-3 sticky right-0 bg-bg-800/95">Total</th>
+              <th className="text-right text-sm uppercase tracking-wider text-ink-100 pb-3 font-bold pl-3 sticky right-0 bg-bg-800/95">Total</th>
             </tr>
           </thead>
           <tbody>
             {data.filas.map(({ empleado, cells, totalHoras, tardanzas }) => (
-              <tr key={empleado.id} className="border-t border-white/5 hover:bg-bg-700/30 transition">
-                <td className="py-2 sticky left-0 bg-bg-800/95 z-10 pr-3">
-                  <div className="flex items-center gap-2">
+              <tr key={empleado.id} className="border-t border-white/10 hover:bg-bg-700/30 transition">
+                <td className="py-2.5 sticky left-0 bg-bg-800/95 z-10 pr-3">
+                  <div className="flex items-center gap-2.5">
                     <Avatar name={empleado.fullName} id={empleado.id} size="sm" />
                     <div className="min-w-0">
-                      <div className="font-medium text-ink-50 text-sm truncate">{empleado.fullName}</div>
-                      <div className="text-[10px] text-ink-300">
-                        {tardanzas > 0 && <span className="text-warn">{tardanzas} tarde · </span>}
+                      <div className="font-semibold text-ink-50 text-base truncate">{empleado.fullName}</div>
+                      <div className="text-xs text-ink-200">
+                        {tardanzas > 0 && <span className="text-warn font-semibold">{tardanzas} tarde · </span>}
                         {empleado.position}
                       </div>
                     </div>
@@ -474,10 +474,10 @@ function MesView({ empleados, attendance, schedules, condonaciones, turnos, pers
                       onClick={() => isClickable && onCelda(c, empleado)}
                     >
                       <span className="relative inline-block">
-                        <span className={`inline-block w-2 h-2 rounded-full ${colorState[c.state]}`} />
+                        <span className={`inline-block w-2.5 h-2.5 rounded-full ${colorState[c.state]}`} />
                         {dotSalidaColor && (
                           <span
-                            className="absolute -bottom-0.5 -right-0.5 w-1 h-1 rounded-full ring-1 ring-bg-800"
+                            className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ring-1 ring-bg-800"
                             style={{ background: dotSalidaColor }}
                           />
                         )}
@@ -485,7 +485,7 @@ function MesView({ empleados, attendance, schedules, condonaciones, turnos, pers
                     </td>
                   )
                 })}
-                <td className="text-right py-2 pl-3 font-display font-semibold text-ink-50 sticky right-0 bg-bg-800/95">
+                <td className="text-right py-2.5 pl-3 font-display font-bold text-ink-50 text-base sticky right-0 bg-bg-800/95">
                   {formatHoras(totalHoras)}
                 </td>
               </tr>
