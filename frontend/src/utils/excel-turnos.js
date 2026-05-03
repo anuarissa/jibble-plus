@@ -5,39 +5,92 @@
 //      Detección automática.
 
 import * as XLSX from 'xlsx'
-import { textToTurno, turnoToText, DIAS_LABEL, isoWeekKey } from './turnos'
+import { textToTurno, DIAS_LABEL, isoWeekKey } from './turnos'
 
 const HEADERS = ['Empleado', ...DIAS_LABEL]
 
-// Genera y descarga un .xlsx con los empleados del local pre-llenado con turnos actuales.
+// Genera y descarga un .xlsx limpio para administrar turnos en oficinas.
+// Hoja 1 "TURNOS": empleados pre-poblados (vacíos para llenar).
+// Hoja 2 "INSTRUCCIONES": cómo llenarlo paso a paso.
 //   empleados: [{ id, fullName }]
-//   turnos:    estado actual de turnos del store
+//   turnos:    estado actual de turnos del store (no se usa — siempre vacío para llenar)
 //   weekKey:   "2026-W17"
 //   nombreLocal: para el nombre del archivo
-export function descargarTemplateTurnos({ empleados, turnos, weekKey, nombreLocal }) {
-  const semana = turnos?.[weekKey] || {}
-  const data = [HEADERS]
-  for (const emp of empleados) {
-    const fila = [emp.fullName]
-    for (let dow = 1; dow <= 7; dow++) {
-      const celda = semana[emp.id]?.[String(dow)]
-      fila.push(turnoToText(celda))
-    }
-    data.push(fila)
-  }
-  // Fila ejemplo si no hay empleados
+export function descargarTemplateTurnos({ empleados, weekKey, nombreLocal }) {
+  // === HOJA 1: TURNOS ===
+  const turnos = [
+    ['Empleado', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
+    ['(EJEMPLO) Borra esta fila', '09:00-16:00', '09:00-16:00', 'OFF', '09:00-16:00', '09:00-16:00', '16:00-23:00', 'OFF'],
+    [],
+  ]
   if (empleados.length === 0) {
-    data.push(['(Sin empleados activos en este local)', '', '', '', '', '', '', ''])
+    turnos.push(['(Sin empleados activos en este local)', '', '', '', '', '', '', ''])
+  } else {
+    for (const emp of empleados) {
+      turnos.push([emp.fullName, '', '', '', '', '', '', ''])
+    }
   }
-  // Hint en hoja
-  data.push([])
-  data.push(['Formato: 08:00-16:00 (entrada-salida) o "OFF" para día libre. Celda vacía = sin turno.'])
+  turnos.push([])
+  turnos.push(['(*) FORMATO ACEPTADO POR CELDA:'])
+  turnos.push(['(*)   "09:00-16:00"   →  Entrada 9 AM, salida 4 PM'])
+  turnos.push(['(*)   "16:00-23:00"   →  Entrada 4 PM, salida 11 PM'])
+  turnos.push(['(*)   "OFF" o "LIBRE" →  Día libre'])
+  turnos.push(['(*)   (celda vacía)   →  Mantiene el horario por defecto del empleado'])
+  turnos.push([])
+  turnos.push(['(*) IMPORTANTE:'])
+  turnos.push(['(*)   1. No cambies los nombres — deben coincidir exactamente con el sistema.'])
+  turnos.push([`(*)   2. Antes de importar, posicionate en la SEMANA ${weekKey} en la app.`])
+  turnos.push(['(*)   3. Click en "Importar Excel" → seleccioná este archivo.'])
+  turnos.push(['(*)   4. Revisá el preview y si todo está bien, apretá "Guardar todos".'])
 
-  const ws = XLSX.utils.aoa_to_sheet(data)
-  // Anchos sugeridos
-  ws['!cols'] = [{ wch: 28 }, ...DIAS_LABEL.map(() => ({ wch: 14 }))]
+  const wsTurnos = XLSX.utils.aoa_to_sheet(turnos)
+  wsTurnos['!cols'] = [
+    { wch: 30 },
+    ...DIAS_LABEL.map(() => ({ wch: 14 })),
+  ]
+
+  // === HOJA 2: INSTRUCCIONES ===
+  const instrucciones = [
+    [`CÓMO LLENAR ESTE TEMPLATE — ${nombreLocal || 'Local'} · Semana ${weekKey}`],
+    [],
+    ['PASO 1 — Llenar los horarios'],
+    ['  En la hoja "TURNOS" (a la izquierda), poné el horario de cada empleado por día.'],
+    [],
+    ['PASO 2 — Formatos válidos por celda'],
+    ['  09:00-16:00       Horario normal (entrada-salida)'],
+    ['  08:30-12:00       Cualquier rango con minutos'],
+    ['  16:00-23:00       Turno de tarde / noche'],
+    ['  OFF               Día libre'],
+    ['  LIBRE             Día libre (alternativa)'],
+    ['  (vacío)           No tocar — usa el horario por defecto del empleado'],
+    [],
+    ['PASO 3 — Importar a la app'],
+    ['  1. Andá a la app de Jibble+'],
+    [`  2. Entrá al local "${nombreLocal || ''}"`],
+    ['  3. Pestaña "Turnos"'],
+    [`  4. Asegurate de estar parado en la semana ${weekKey} (botones « » para navegar)`],
+    ['  5. Click "Importar Excel" → elegí este archivo'],
+    ['  6. Vas a ver un banner naranja "X cambios sin guardar" con preview'],
+    ['  7. Si todo está bien, click "Guardar todos". Si no, "Descartar".'],
+    [],
+    ['REGLAS IMPORTANTES'],
+    ['  - Los nombres de la columna "Empleado" deben coincidir EXACTAMENTE con los del sistema.'],
+    ['  - Si agregás un nombre que no existe en el sistema, va a aparecer un aviso amarillo'],
+    ['    "Empleados no encontrados" — los demás SE CARGAN igual.'],
+    ['  - Si un nombre matchea con varios empleados (ej "FABIOLA" → Rojas y Nava),'],
+    ['    no se aplica a ninguna. Escribí el nombre completo para diferenciarlos.'],
+    [],
+    ['DESCUENTOS POR TARDANZA'],
+    ['  - El sistema descuenta 10 Bs por cada bloque de 5 minutos iniciados.'],
+    ['  - Tolerancia: 0 minutos (1 minuto tarde ya cuenta).'],
+    ['  - Para condonar una tardanza puntual, hacelo desde la pestaña "Tardanzas".'],
+  ]
+  const wsInstr = XLSX.utils.aoa_to_sheet(instrucciones)
+  wsInstr['!cols'] = [{ wch: 80 }]
+
   const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, weekKey)
+  XLSX.utils.book_append_sheet(wb, wsTurnos, 'TURNOS')
+  XLSX.utils.book_append_sheet(wb, wsInstr, 'INSTRUCCIONES')
   const safe = (nombreLocal || 'local').replace(/[^a-z0-9]+/gi, '_')
   XLSX.writeFile(wb, `turnos_${safe}_${weekKey}.xlsx`)
 }
