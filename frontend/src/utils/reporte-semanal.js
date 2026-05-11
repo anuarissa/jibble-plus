@@ -211,6 +211,8 @@ export function descargarReporteSemanal({
   ]
 
   // === DEFINICIÓN DE COLUMNAS POR HOJA ===
+  // Cada hoja puede declarar opts (autoFilter, zebra, sectionMarkerCol, sectionMarkerPrefix)
+  // que se pasan a buildSheet en export.js.
   const sheets = [
     {
       name: 'RESUMEN',
@@ -219,11 +221,17 @@ export function descargarReporteSemanal({
         { label: 'Valor', accessor: 'Valor', width: 30 },
       ],
       rows: resumenRows,
+      autoFilter: false,
+      zebra: false,
+      sectionMarkerCol: 'Campo',
+      sectionMarkerPrefix: '—',
     },
     {
       name: 'HORARIO vs REAL',
-      columns: planVsRealColumns,
+      columns: planVsRealColumns.map(c => c.accessor === 'Tipo' ? { ...c, bold: true } : c),
       rows: planVsRealRows,
+      autoFilter: false,
+      zebra: false,
     },
     {
       name: 'ASISTENCIA',

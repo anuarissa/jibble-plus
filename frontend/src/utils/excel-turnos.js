@@ -4,7 +4,7 @@
 //   2) Formato planilla Anuar: 3 filas por empleado (ENTRADA/SALIDA/HORAS), días en cols E-K.
 //      Detección automática.
 
-import * as XLSX from 'xlsx'
+import * as XLSX from 'xlsx-js-style'
 import { textToTurno, DIAS_LABEL, isoWeekKey } from './turnos'
 
 const HEADERS = ['Empleado', ...DIAS_LABEL]
@@ -48,6 +48,25 @@ export function descargarTemplateTurnos({ empleados, weekKey, nombreLocal }) {
     { wch: 30 },
     ...DIAS_LABEL.map(() => ({ wch: 14 })),
   ]
+  wsTurnos['!rows'] = [{ hpt: 24 }]
+  // Estilo del header (fila 0): naranja + blanco. El resto sin estilo (texto libre).
+  const HDR = {
+    fill: { patternType: 'solid', fgColor: { rgb: 'F97316' } },
+    font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: {
+      top: { style: 'thin', color: { rgb: 'C2410C' } },
+      bottom: { style: 'medium', color: { rgb: 'C2410C' } },
+      left: { style: 'thin', color: { rgb: 'C2410C' } },
+      right: { style: 'thin', color: { rgb: 'C2410C' } },
+    },
+  }
+  for (let c = 0; c < 8; c++) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c })
+    if (wsTurnos[addr]) wsTurnos[addr].s = HDR
+  }
+  wsTurnos['!freeze'] = { xSplit: 0, ySplit: 1 }
+  wsTurnos['!views'] = [{ state: 'frozen', ySplit: 1 }]
 
   // === HOJA 2: INSTRUCCIONES ===
   const instrucciones = [

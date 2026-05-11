@@ -132,6 +132,10 @@ export function EmployeeReportModal({ empleados, attendance, schedules, cfg, gro
           { label: 'Valor', accessor: 'Valor', width: 32 },
         ],
         rows: resumenRows,
+        autoFilter: false,
+        zebra: false,
+        sectionMarkerCol: 'Campo',
+        sectionMarkerPrefix: '—',
       },
       {
         name: 'DETALLE DIAS',
