@@ -125,6 +125,8 @@ export default function Restaurant({ cfg }) {
           empleados={empleados}
           attendance={data.attendance}
           schedules={data.schedules}
+          cfg={cfg}
+          group={group}
         />
       )}
     </div>

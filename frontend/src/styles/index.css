@@ -73,3 +73,36 @@
   .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
   .scrollbar-thin::-webkit-scrollbar-thumb { background: theme(colors.bg.500); border-radius: 4px; }
 }
+
+/* === Estilos para imprimir / Guardar como PDF (reporte individual) === */
+/* En modo print, ocultamos toda la UI y dejamos solo .print-area con tema claro. */
+@media print {
+  @page { size: A4; margin: 12mm; }
+  html, body { background: white !important; color: #1a1a1f !important; }
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area {
+    position: absolute; left: 0; top: 0; width: 100%;
+    background: white !important;
+    color: #1a1a1f !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+  .no-print, .no-print * { visibility: hidden !important; display: none !important; }
+  .print-area .surface, .print-area .surface-elevated {
+    background: white !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: none !important;
+  }
+  .print-area .grain::after { display: none !important; }
+  .print-area table { page-break-inside: avoid; border-collapse: collapse; }
+  .print-area thead { background: #fff7ed !important; }
+  .print-area thead th { color: #1a1a1f !important; border-bottom: 2px solid #fb923c !important; }
+  .print-area tbody td { border-bottom: 1px solid #f3f4f6 !important; color: #1f2937 !important; }
+  .print-area .badge { border: 1px solid #d1d5db; }
+  /* Estados con tinte claro pero legible en B/N también */
+  .print-area .print-good { color: #15803d !important; }
+  .print-area .print-warn { color: #b45309 !important; }
+  .print-area .print-bad { color: #b91c1c !important; }
+  .print-area .print-muted { color: #6b7280 !important; }
+}

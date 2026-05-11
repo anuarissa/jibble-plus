@@ -7,6 +7,7 @@ import { formatHoras, formatHora, formatFechaCorta, formatFecha } from '../../ut
 import { exportCSV, exportExcel } from '../../utils/export'
 import { descargarReporteSemanal } from '../../utils/reporte-semanal'
 import { CeldaDetalleModal, MotivoBadge } from './CeldaDetalleModal'
+import { EmployeeReportModal } from './EmployeeReportModal'
 
 const MODOS = [
   { id: 'dia', label: 'Día', icon: Calendar },
@@ -64,6 +65,7 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
   const [modo, setModo] = useState('semana')
   const [offset, setOffset] = useState(0) // significado depende del modo
   const [detalle, setDetalle] = useState(null) // { celda, empleado }
+  const [reporteEmpId, setReporteEmpId] = useState(null) // empleado para el reporte individual
 
   function ir(delta) { setOffset(o => o + delta) }
   function hoy() { setOffset(0) }
@@ -75,7 +77,7 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
           <h3 className="font-display font-semibold text-xl">Asistencia</h3>
-          <p className="text-sm text-ink-200 mt-1">Click en una celda para ver detalle, condonar o entender el color</p>
+          <p className="text-sm text-ink-200 mt-1">Click en celda para detalle/condonar · Click en nombre del empleado para reporte individual</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex gap-1 bg-bg-700/50 p-1 rounded-xl border border-white/5">
@@ -109,6 +111,7 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
         <SemanaView empleados={empleados} attendance={attendance} schedules={schedules}
                     condonaciones={condonaciones} turnos={turnos} personOverrides={personOverrides}
                     offset={offset} onCelda={(c, emp) => setDetalle({ celda: c, empleado: emp })}
+                    onEmpleado={(empId) => setReporteEmpId(empId)}
                     nombreLocal={nombreLocal} cfg={cfg} group={group} />
       )}
       {modo === 'mes' && (
@@ -137,6 +140,18 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
           empleado={detalle.empleado}
           cfg={cfg}
           onClose={() => setDetalle(null)}
+        />
+      )}
+
+      {reporteEmpId && cfg && group && (
+        <EmployeeReportModal
+          empleados={empleados}
+          attendance={attendance}
+          schedules={schedules}
+          cfg={cfg}
+          group={group}
+          initialEmployeeId={reporteEmpId}
+          onClose={() => setReporteEmpId(null)}
         />
       )}
     </div>
@@ -251,7 +266,7 @@ function DiaView({ empleados, attendance, schedules, condonaciones, turnos, pers
 
 // ============== VISTA SEMANA ==============
 
-function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset, onCelda, nombreLocal, cfg, group }) {
+function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset, onCelda, onEmpleado, nombreLocal, cfg, group }) {
   const ini = useMemo(() => addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), offset * 7), [offset])
   const fin = useMemo(() => addDays(ini, 6), [ini])
   const data = useMemo(
@@ -310,13 +325,17 @@ function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, p
             {data.filas.map(({ empleado, cells, totalHoras }) => (
               <tr key={empleado.id} className="border-t border-white/10 hover:bg-bg-700/30 transition">
                 <td className="py-3.5">
-                  <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => onEmpleado?.(empleado.id)}
+                    className="flex items-center gap-3 text-left hover:opacity-80 transition w-full group"
+                    title="Ver reporte individual de esta semana"
+                  >
                     <Avatar name={empleado.fullName} id={empleado.id} size="sm" />
                     <div className="min-w-0">
-                      <div className="font-semibold text-ink-50 text-base truncate">{empleado.fullName}</div>
+                      <div className="font-semibold text-ink-50 text-base truncate group-hover:text-accent transition">{empleado.fullName}</div>
                       <div className="text-sm text-ink-200">{empleado.position}</div>
                     </div>
-                  </div>
+                  </button>
                 </td>
                 {cells.map((c, i) => {
                   const isClickable = c.fichaje || c.falto

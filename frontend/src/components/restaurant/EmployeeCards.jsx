@@ -1,11 +1,14 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { addDays, startOfWeek } from 'date-fns'
+import { FileText } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
 import { attendanceEnRango } from '../../utils/stats'
 import { sumarHoras } from '../../utils/payroll'
 import { formatHoras, formatHora, formatFechaCorta } from '../../utils/format'
+import { EmployeeReportModal } from './EmployeeReportModal'
 
-export function EmployeeCards({ empleados, attendance, schedules }) {
+export function EmployeeCards({ empleados, attendance, schedules, cfg, group }) {
+  const [reporteEmpId, setReporteEmpId] = useState(null)
   const ini = useMemo(() => startOfWeek(new Date(), { weekStartsOn: 1 }), [])
   const fin = useMemo(() => addDays(ini, 6), [ini])
 
@@ -59,9 +62,31 @@ export function EmployeeCards({ empleados, attendance, schedules }) {
                 {ultima ? `${formatFechaCorta(ultima.date)} · ${formatHora(ultima.clockIn)}` : '—'}
               </span>
             </div>
+
+            {cfg && group && (
+              <button
+                onClick={() => setReporteEmpId(emp.id)}
+                className="btn-secondary text-xs font-semibold w-full mt-3 justify-center"
+                title="Ver reporte semanal individual con horarios, tardanzas y planilla"
+              >
+                <FileText size={13} /> Ver reporte semanal
+              </button>
+            )}
           </div>
         )
       })}
+
+      {reporteEmpId && cfg && group && (
+        <EmployeeReportModal
+          empleados={empleados}
+          attendance={attendance}
+          schedules={schedules}
+          cfg={cfg}
+          group={group}
+          initialEmployeeId={reporteEmpId}
+          onClose={() => setReporteEmpId(null)}
+        />
+      )}
     </div>
   )
 }
