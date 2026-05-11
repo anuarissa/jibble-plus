@@ -6,7 +6,7 @@
 //
 // Pensado para administración de oficina — un archivo y se ve cómo le fue al local.
 
-import { format } from 'date-fns'
+import { format, addDays } from 'date-fns'
 import { tablaSemanal, tardanzasConCondonacion, attendanceEnRango, groupByPerson,
          celdaToRow, EXPORT_COLUMNS_ASISTENCIA } from './stats'
 import { planillaLocal } from './payroll'
@@ -161,6 +161,55 @@ export function descargarReporteSemanal({
     'Total a pagar (Bs)': planilla.totales.totalAPagar,
   })
 
+  // === HOJA 5: HORARIO vs REAL (comparativa visual planificado vs ejecutado) ===
+  // Formato: 3 filas por empleado (Programado / Real / Estado) + 1 fila vacía como separador.
+  // Hace fácil ver de un vistazo si la persona llegó al horario que estaba planificado.
+  const dayLabels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+  const dayKeys = []
+  for (let i = 0; i < 7; i++) {
+    dayKeys.push(`${dayLabels[i]} ${format(addDays(ini, i), 'dd/MM')}`)
+  }
+  const planVsRealRows = []
+  for (const fila of semana.filas) {
+    const filaProg = { Empleado: fila.empleado.fullName, Tipo: 'Programado' }
+    const filaReal = { Empleado: '', Tipo: 'Real' }
+    const filaEst = { Empleado: '', Tipo: 'Estado' }
+    for (let i = 0; i < 7; i++) {
+      const c = fila.cells[i]
+      const k = dayKeys[i]
+      // Programado
+      filaProg[k] = c.programadoStart && c.programadoEnd
+        ? `${c.programadoStart}-${c.programadoEnd}`
+        : 'Libre'
+      // Real
+      if (c.fichaje?.clockIn) {
+        const ent = formatHora(c.fichaje.clockIn)
+        const sal = c.fichaje.clockOut ? formatHora(c.fichaje.clockOut) : 'activo'
+        filaReal[k] = `${ent}-${sal}`
+      } else if (c.falto) {
+        filaReal[k] = 'NO FICHÓ'
+      } else {
+        filaReal[k] = '—'
+      }
+      // Estado
+      filaEst[k] = c.falto ? '✗ Faltó'
+        : c.state === 'idle' ? '—'
+        : c.motivoColor === 'aTiempo' ? '✓ A tiempo'
+        : c.motivoColor === 'tardeEntrada' ? `Tarde +${c.mins} min`
+        : c.motivoColor === 'salidaTemprana' ? `Salió ${Math.abs(c.minSalidaDiff || 0)} min antes`
+        : c.motivoColor === 'extras' ? `+${c.minSalidaDiff} min extras`
+        : c.motivoColor === 'sinSalida' ? 'Sin salida (activo)'
+        : c.motivoColor === 'diaLibreTrabajado' ? 'Vino en día libre'
+        : '—'
+    }
+    planVsRealRows.push(filaProg, filaReal, filaEst, {}) // {} = fila vacía separadora
+  }
+  const planVsRealColumns = [
+    { label: 'Empleado', accessor: 'Empleado', width: 24 },
+    { label: ' ', accessor: 'Tipo', width: 12 },
+    ...dayKeys.map(k => ({ label: k, accessor: k, width: 16 })),
+  ]
+
   // === DEFINICIÓN DE COLUMNAS POR HOJA ===
   const sheets = [
     {
@@ -170,6 +219,11 @@ export function descargarReporteSemanal({
         { label: 'Valor', accessor: 'Valor', width: 30 },
       ],
       rows: resumenRows,
+    },
+    {
+      name: 'HORARIO vs REAL',
+      columns: planVsRealColumns,
+      rows: planVsRealRows,
     },
     {
       name: 'ASISTENCIA',
