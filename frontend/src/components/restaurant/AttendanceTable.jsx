@@ -182,7 +182,7 @@ function DiaView({ empleados, attendance, schedules, condonaciones, turnos, pers
         </div>
         <div className="flex gap-2">
           <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><Download size={15} /> CSV</button>
-          <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><FileSpreadsheet size={15} /> Excel</button>
+          <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS, { rowHighlight: r => r?.Estado === 'No fichó' })} className="btn-secondary text-sm font-semibold"><FileSpreadsheet size={15} /> Excel</button>
         </div>
       </div>
       <div className="overflow-x-auto scrollbar-thin">
@@ -299,7 +299,7 @@ function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, p
         <p className="text-sm font-medium text-ink-200">Semana del {format(ini, 'dd MMM')} al {format(fin, 'dd MMM yyyy')}</p>
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><Download size={15} /> CSV</button>
-          <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><FileSpreadsheet size={15} /> Excel</button>
+          <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS, { rowHighlight: r => r?.Estado === 'No fichó' })} className="btn-secondary text-sm font-semibold"><FileSpreadsheet size={15} /> Excel</button>
           {cfg && group && (
             <button onClick={generarReporte} className="btn-primary text-sm font-semibold" title="Excel con 4 hojas: Resumen, Asistencia, Tardanzas y Planilla">
               <FileSpreadsheet size={15} /> Reporte semanal
@@ -412,7 +412,7 @@ function MesView({ empleados, attendance, schedules, condonaciones, turnos, pers
           </p>
           <div className="flex gap-2">
             <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><Download size={15} /> CSV</button>
-            <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><FileSpreadsheet size={15} /> Excel</button>
+            <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS, { rowHighlight: r => r?.Estado === 'No fichó' })} className="btn-secondary text-sm font-semibold"><FileSpreadsheet size={15} /> Excel</button>
           </div>
         </div>
       </div>

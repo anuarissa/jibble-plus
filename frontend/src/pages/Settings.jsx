@@ -96,24 +96,22 @@ export default function Settings({ cfg }) {
             onChange={v => cfg.setSettings({ toleranciaMinutos: Number(v) })}
           />
           <NumberField
-            label="Multa por bloque (Bs)"
-            help="Cuánto se descuenta por cada bloque de minutos tarde."
-            value={cfg.config.settings.multaPorBloque}
-            onChange={v => cfg.setSettings({ multaPorBloque: Number(v) })}
-          />
-          <NumberField
-            label="Tamaño de bloque (minutos)"
-            help="Cada cuántos minutos sube la multa."
-            value={cfg.config.settings.bloqueMinutos}
-            onChange={v => cfg.setSettings({ bloqueMinutos: Number(v) })}
-          />
-          <NumberField
             label="Multiplicador horas extra"
             step={0.1}
             help="Por cada hora extra, se paga la tarifa × este multiplicador (default 1.5)."
             value={cfg.config.settings.multiplicadorExtra}
             onChange={v => cfg.setSettings({ multiplicadorExtra: Number(v) })}
           />
+        </div>
+        <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 p-4">
+          <div className="text-sm font-semibold text-ink-50 mb-2">Regla de multa por tardanza (escalonada)</div>
+          <ul className="text-sm text-ink-200 space-y-1 list-disc pl-5">
+            <li><span className="font-mono font-semibold text-ink-100">1 a 10 min</span> tarde → <span className="font-semibold text-accent-400">10 Bs</span> (fijo)</li>
+            <li><span className="font-mono font-semibold text-ink-100">11 min o más</span> tarde → <span className="font-semibold text-accent-400">10 Bs + 20 Bs por cada bloque de 10 min iniciado</span> después de los primeros 10.</li>
+          </ul>
+          <div className="text-xs text-ink-300 mt-2">
+            Ejemplos: 1min=10Bs · 10min=10Bs · 11min=30Bs · 20min=30Bs · 21min=50Bs · 30min=50Bs · 31min=70Bs.
+          </div>
         </div>
       </Section>
 

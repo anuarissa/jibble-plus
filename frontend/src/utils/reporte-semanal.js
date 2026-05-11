@@ -133,6 +133,7 @@ export function descargarReporteSemanal({
       })
 
   // === HOJA 4: PLANILLA ===
+  const TARIFA_MULTA_LABEL = '10 Bs hasta 10 min · +20 Bs cada 10 min adicional'
   const planillaRows = planilla.filas.map(f => ({
     Empleado: f.fullName,
     Cargo: f.position || '',
@@ -142,7 +143,7 @@ export function descargarReporteSemanal({
     'Horas extra': f.horasExtra,
     'Bruto (Bs)': f.bruto,
     'Min tarde': f.minutosTardeTotales || 0,
-    'Tarifa multa': '10 Bs / 5 min iniciados',
+    'Tarifa multa': TARIFA_MULTA_LABEL,
     'Descuento tardanza (Bs)': f.descuentoTardanza,
     'Total a pagar (Bs)': f.totalAPagar,
   }))
@@ -232,11 +233,15 @@ export function descargarReporteSemanal({
       rows: planVsRealRows,
       autoFilter: false,
       zebra: false,
+      // Pintar de rojo cualquier fila que contenga "NO FICHÓ" o "✗ Faltó" en algún día.
+      // Eso destaca tanto la fila "Real" del día faltado como la fila "Estado".
+      rowHighlight: (row) => Object.values(row).some(v => v === 'NO FICHÓ' || v === '✗ Faltó'),
     },
     {
       name: 'ASISTENCIA',
       columns: EXPORT_COLUMNS_ASISTENCIA,
       rows: asistenciaRows,
+      rowHighlight: (row) => row?.Estado === 'No fichó',
     },
     {
       name: 'TARDANZAS',

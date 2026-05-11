@@ -100,7 +100,11 @@ export function descargarTemplateTurnos({ empleados, weekKey, nombreLocal }) {
     ['    no se aplica a ninguna. Escribí el nombre completo para diferenciarlos.'],
     [],
     ['DESCUENTOS POR TARDANZA'],
-    ['  - El sistema descuenta 10 Bs por cada bloque de 5 minutos iniciados.'],
+    ['  - Regla escalonada:'],
+    ['      * 1 a 10 minutos tarde  →  10 Bs (fijo)'],
+    ['      * 11 minutos o más      →  10 Bs + 20 Bs por cada bloque de 10 min iniciado'],
+    ['        después de los primeros 10. Ejemplos: 11min=30Bs, 20min=30Bs,'],
+    ['        21min=50Bs, 30min=50Bs, 31min=70Bs.'],
     ['  - Tolerancia: 0 minutos (1 minuto tarde ya cuenta).'],
     ['  - Para condonar una tardanza puntual, hacelo desde la pestaña "Tardanzas".'],
   ]

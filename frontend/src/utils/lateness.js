@@ -1,20 +1,28 @@
 // Detección y multa de tardanzas — Bolivianos.
-// Regla Anuar: tolerancia 0 min (1 min ya es tarde). Multa 10 Bs por cada bloque de 5 min iniciado.
+// Regla Anuar: tolerancia 0 min (1 min ya es tarde). Multa ESCALONADA:
+//   - 1-10 min tarde    → 10 Bs (franja base, fija)
+//   - 11+ min tarde     → 10 Bs + 20 Bs por cada bloque de 10 min iniciado después de los 10
 //
 // Ejemplos:
-//   0 min → 0 Bs   (puntual)
-//   1 min → 10 Bs  (bloque 1)
-//   5 min → 10 Bs  (bloque 1 todavía)
-//   6 min → 20 Bs  (bloque 2)
-//   30 min → 60 Bs (bloque 6)
+//   0 min  → 0 Bs   (puntual)
+//   1 min  → 10 Bs  (franja base)
+//   10 min → 10 Bs  (franja base)
+//   11 min → 30 Bs  (10 base + 20 por bloque 11-20)
+//   20 min → 30 Bs  (10 base + 20 por bloque 11-20)
+//   21 min → 50 Bs  (10 base + 20 + 20 por bloque 21-30)
+//   30 min → 50 Bs
+//   31 min → 70 Bs  (10 base + 20 + 20 + 20 por bloque 31-40)
 
-export const FINE_PER_BLOCK = 10  // Bs
-export const BLOCK_MINUTES = 5
+export const FINE_BASE = 10            // Bs por la franja 1-10 min
+export const FINE_BASE_LIMIT = 10      // tope (min) de la franja base
+export const FINE_EXTRA_PER_BLOCK = 20 // Bs por cada bloque adicional
+export const FINE_EXTRA_BLOCK = 10     // tamaño (min) de cada bloque adicional
 
 export function calcularMulta(minutosTarde) {
   if (!minutosTarde || minutosTarde <= 0) return 0
-  const bloques = Math.ceil(minutosTarde / BLOCK_MINUTES)
-  return bloques * FINE_PER_BLOCK
+  if (minutosTarde <= FINE_BASE_LIMIT) return FINE_BASE
+  const bloquesExtra = Math.ceil((minutosTarde - FINE_BASE_LIMIT) / FINE_EXTRA_BLOCK)
+  return FINE_BASE + bloquesExtra * FINE_EXTRA_PER_BLOCK
 }
 
 // Calcula minutos de retraso entre hora programada y hora real, en zona Bolivia.

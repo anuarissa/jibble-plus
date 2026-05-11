@@ -19,9 +19,14 @@ const DEFAULT_CONFIG = {
   mockMode: false,
   locales: {}, // { [groupId]: { name, color, emoji } }
   settings: {
-    toleranciaMinutos: 0,        // Anuar: tolerancia 0
-    multaPorBloque: 10,          // Bs
-    bloqueMinutos: 5,            // 10 Bs cada 5 min
+    toleranciaMinutos: 0,        // Anuar: tolerancia 0 (1 min tarde ya cuenta)
+    // NOTA: la regla de multa es escalonada y vive hardcoded en utils/lateness.js
+    //   1-10 min → 10 Bs (fijo)
+    //   11+ min  → 10 Bs + 20 Bs por cada bloque de 10 min iniciado
+    // Las claves multaPorBloque/bloqueMinutos quedan en localStorage por compatibilidad
+    // con instalaciones viejas, pero ya no se usan.
+    multaPorBloque: 10,
+    bloqueMinutos: 5,
     multiplicadorExtra: 1.5,
     horasExtraDesde: 8,          // por día
   },

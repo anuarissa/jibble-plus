@@ -132,7 +132,7 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
     { label: 'Horas extra', accessor: 'horasExtra', width: 12, numFmt: '0.00' },
     { label: 'Bruto (Bs)', accessor: 'bruto', width: 12, numFmt: '"Bs" #,##0.00' },
     { label: 'Min tarde', accessor: r => r.minutosTardeTotales || 0, width: 10, numFmt: '0' },
-    { label: 'Tarifa multa', accessor: () => '10 Bs / 5 min iniciados', width: 22 },
+    { label: 'Tarifa multa', accessor: () => '10 Bs hasta 10 min · +20 Bs cada 10 min adicional', width: 44 },
     { label: 'Descuento tardanza (Bs)', accessor: 'descuentoTardanza', width: 18, numFmt: '"Bs" #,##0.00' },
     { label: 'Total a pagar (Bs)', accessor: 'totalAPagar', width: 16, numFmt: '"Bs" #,##0.00' },
   ]

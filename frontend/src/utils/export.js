@@ -52,18 +52,34 @@ const SECTION_STYLE = {
   alignment: { vertical: 'center' },
 }
 
+// Estilo para filas con falta / no fichó — fondo rojo claro + texto rojo bold.
+// Llama la atención al instante en el Excel.
+const MISSED_STYLE = {
+  fill: { patternType: 'solid', fgColor: { rgb: 'FEE2E2' } },     // rojo-100
+  font: { bold: true, color: { rgb: 'B91C1C' }, sz: 11, name: 'Calibri' }, // rojo-700
+  alignment: { vertical: 'center' },
+  border: {
+    top:    { style: 'thin', color: { rgb: 'FCA5A5' } },
+    bottom: { style: 'thin', color: { rgb: 'FCA5A5' } },
+    left:   { style: 'thin', color: { rgb: 'FCA5A5' } },
+    right:  { style: 'thin', color: { rgb: 'FCA5A5' } },
+  },
+}
+
 // columns: [{ label, accessor, width?, numFmt?, bold? }]
 //   width: ancho explícito en caracteres. Si no se pasa, se autocalcula.
 //   numFmt: formato numérico XLSX (ej "0.00", '"Bs" #,##0.00', '0').
 //   bold: si true, todas las celdas body de esa columna van bold (para columna "Tipo" en HORARIO vs REAL).
-// opts: { autoFilter, zebra, sectionMarkerCol, sectionMarkerPrefix }
+// opts: { autoFilter, zebra, sectionMarkerCol, sectionMarkerPrefix, rowHighlight }
 //   autoFilter: true por default. AutoFilter sobre el header.
 //   zebra: true por default. Filas alternadas con fondo gris claro.
 //   sectionMarkerCol: nombre de columna donde buscar marcadores de sección (ej "Campo").
 //   sectionMarkerPrefix: si una celda en esa columna empieza con este string (ej "—"),
 //     toda la fila se estiliza como SECTION_STYLE (negrita + fondo gris).
+//   rowHighlight: (row, rowIndex) => boolean. Si retorna true, todas las celdas de
+//     esa fila reciben MISSED_STYLE (rojo) — útil para marcar faltas/no fichó.
 function buildSheet(columns, rows, opts = {}) {
-  const { autoFilter = true, zebra = true, sectionMarkerCol = null, sectionMarkerPrefix = null } = opts
+  const { autoFilter = true, zebra = true, sectionMarkerCol = null, sectionMarkerPrefix = null, rowHighlight = null } = opts
 
   const data = [columns.map(c => c.label)]
   for (const r of rows) {
@@ -108,6 +124,9 @@ function buildSheet(columns, rows, opts = {}) {
       isSection = typeof v === 'string' && v.trim().startsWith(sectionMarkerPrefix)
     }
 
+    // ¿Esta fila debe destacarse como falta/no fichó?
+    const isMissed = !isSection && rowHighlight && !!rowHighlight(rows[r - 1], r - 1)
+
     for (let c = 0; c < columns.length; c++) {
       const addr = XLSX.utils.encode_cell({ r, c })
       let cell = ws[addr]
@@ -129,9 +148,14 @@ function buildSheet(columns, rows, opts = {}) {
         }
       }
 
-      // Construir style
+      // Construir style — MISSED tiene prioridad sobre section/zebra
       let style
-      if (isSection) {
+      if (isMissed) {
+        style = {
+          ...MISSED_STYLE,
+          alignment: { ...MISSED_STYLE.alignment, horizontal: isNumeric ? 'right' : 'left' },
+        }
+      } else if (isSection) {
         style = { ...SECTION_STYLE, border: BODY_BORDER }
       } else {
         style = {
