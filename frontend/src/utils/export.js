@@ -19,8 +19,7 @@ export function exportCSV(filename, rows, columns) {
 //   width: ancho explícito en caracteres. Si no se pasa, se autocalcula.
 //   numFmt: formato numérico XLSX (ej "0.00", '"Bs" #,##0.00', '0').
 //           Solo se aplica a celdas que parsean a número.
-export function exportExcel(filename, rows, columns, opts = {}) {
-  const sheetName = opts.sheetName || 'Datos'
+function buildSheet(columns, rows) {
   const data = [columns.map(c => c.label)]
   for (const r of rows) {
     data.push(columns.map(c => typeof c.accessor === 'function' ? c.accessor(r) : r[c.accessor]))
@@ -48,7 +47,6 @@ export function exportExcel(filename, rows, columns, opts = {}) {
       const addr = XLSX.utils.encode_cell({ r, c: idx })
       const cell = ws[addr]
       if (!cell) continue
-      // Si el valor es número (o string numérico), normalizamos a number y aplicamos formato.
       const v = cell.v
       if (typeof v === 'number') {
         cell.t = 'n'; cell.z = fmt
@@ -57,9 +55,28 @@ export function exportExcel(filename, rows, columns, opts = {}) {
       }
     }
   }
+  return ws
+}
 
+function safeSheetName(name) {
+  // Excel: max 31 chars, no permite: / \ ? * [ ]
+  return String(name).replace(/[/\\?*[\]]/g, '').slice(0, 31) || 'Hoja'
+}
+
+export function exportExcel(filename, rows, columns, opts = {}) {
+  const ws = buildSheet(columns, rows)
   const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, sheetName)
+  XLSX.utils.book_append_sheet(wb, ws, safeSheetName(opts.sheetName || 'Datos'))
+  XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : filename + '.xlsx')
+}
+
+// sheets: [{ name, columns, rows }] — produce un único .xlsx con varias hojas.
+export function exportExcelMultiSheet(filename, sheets) {
+  const wb = XLSX.utils.book_new()
+  for (const { name, columns, rows } of sheets) {
+    const ws = buildSheet(columns, rows)
+    XLSX.utils.book_append_sheet(wb, ws, safeSheetName(name))
+  }
   XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : filename + '.xlsx')
 }
 

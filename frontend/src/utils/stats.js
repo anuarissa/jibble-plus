@@ -5,6 +5,7 @@ import { startOfWeek, endOfWeek, format, isWithinInterval, parseISO, addDays, st
 import { detectarTardanzasEnRango, minutosTarde, minutosDiff } from './lateness'
 import { planillaEmpleado, sumarHoras } from './payroll'
 import { isoWeekKey, dayOfWeek, getTurnoEfectivo, getDefaultParaDia, normalizarCelda } from './turnos'
+import { formatHora } from './format'
 
 // Construye el resolver getStartTimeForFichaje a partir de turnos + schedules + defaults.
 // Devuelve "OFF" si el día está marcado off, "HH:MM" si hay hora programada, o null si no hay nada.
@@ -161,7 +162,22 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
     }
   }
 
-  if (!programado) return { state: 'idle', day, dayStr }
+  if (!programado) {
+    if (!fich) return { state: 'idle', day, dayStr }
+    // Vino en su día libre: mostrar fichaje aunque siga fichando ahora.
+    // Si no hay clockOut, calculamos horas hasta el momento actual.
+    const outRef = fich.clockOut ? new Date(fich.clockOut) : new Date()
+    const horasLibre = (outRef - new Date(fich.clockIn)) / 3600000
+    return {
+      state: 'good', day, dayStr, fichaje: fich, horas: horasLibre,
+      mins: 0,
+      programadoStart: null, programadoEnd: null,
+      salidaState: fich.clockOut ? null : 'sinSalida',
+      minSalidaDiff: null,
+      motivoColor: 'diaLibreTrabajado',
+      turnoCustom: false,
+    }
+  }
   if (!fich) return {
     state: 'idle', day, dayStr, falto: true,
     motivoColor: 'falta',
@@ -203,9 +219,9 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
   else if (salidaState === 'temprano') motivoColor = 'salidaTemprana'
   else if (salidaState === 'extras') motivoColor = 'extras'
 
-  const horas = fich.clockOut
-    ? (new Date(fich.clockOut) - new Date(fich.clockIn)) / 3600000
-    : null
+  // Horas: si está fichando ahora (sin clockOut), calculamos hasta el momento actual
+  const outRef = fich.clockOut ? new Date(fich.clockOut) : new Date()
+  const horas = (outRef - new Date(fich.clockIn)) / 3600000
   return {
     state, day, dayStr, fichaje: fich, horas, mins,
     programadoStart: startTimeProgramado,
@@ -262,3 +278,76 @@ export function tablaSemanal({ empleados, attendance, schedules, ini, condonacio
   })
   return { dias, filas }
 }
+
+// Convierte una "celda" resuelta (de vistaDia/tablaSemanal) a una fila plana
+// con campos para exportar a Excel/CSV.
+export function celdaToRow(empleado, c, nombreLocal) {
+  if (c.state === 'idle' && !c.falto) {
+    return {
+      Fecha: c.dayStr,
+      Empleado: empleado.fullName,
+      Cargo: empleado.position || '',
+      Local: nombreLocal,
+      Estado: 'Día libre',
+      'Programado entrada': '',
+      'Entrada real': '',
+      'Min tarde': '',
+      'Programado salida': '',
+      'Salida real': '',
+      'Diff salida (min)': '',
+      'Horas trabajadas': '',
+    }
+  }
+  if (c.falto) {
+    return {
+      Fecha: c.dayStr,
+      Empleado: empleado.fullName,
+      Cargo: empleado.position || '',
+      Local: nombreLocal,
+      Estado: 'No fichó',
+      'Programado entrada': c.programadoStart || '',
+      'Entrada real': '',
+      'Min tarde': '',
+      'Programado salida': c.programadoEnd || '',
+      'Salida real': '',
+      'Diff salida (min)': '',
+      'Horas trabajadas': '',
+    }
+  }
+  const estadoStr =
+    c.motivoColor === 'aTiempo' ? 'A tiempo' :
+    c.motivoColor === 'tardeEntrada' ? `Tarde entrada (+${c.mins}min)` :
+    c.motivoColor === 'salidaTemprana' ? `Salió ${Math.abs(c.minSalidaDiff || 0)}min antes` :
+    c.motivoColor === 'extras' ? `Quedó +${c.minSalidaDiff || 0}min extras` :
+    c.motivoColor === 'sinSalida' ? 'Sin salida (activo)' :
+    c.motivoColor === 'diaLibreTrabajado' ? 'Vino en día libre' : '—'
+  return {
+    Fecha: c.dayStr,
+    Empleado: empleado.fullName,
+    Cargo: empleado.position || '',
+    Local: nombreLocal,
+    Estado: estadoStr,
+    'Programado entrada': c.programadoStart || '',
+    'Entrada real': c.fichaje?.clockIn ? formatHora(c.fichaje.clockIn) : '',
+    'Min tarde': c.mins || 0,
+    'Programado salida': c.programadoEnd || '',
+    'Salida real': c.fichaje?.clockOut ? formatHora(c.fichaje.clockOut) : '',
+    'Diff salida (min)': c.minSalidaDiff != null ? c.minSalidaDiff : '',
+    'Horas trabajadas': c.horas != null ? c.horas.toFixed(2) : '',
+  }
+}
+
+export const EXPORT_COLUMNS_ASISTENCIA = [
+  { label: 'Fecha', accessor: 'Fecha' },
+  { label: 'Empleado', accessor: 'Empleado' },
+  { label: 'Cargo', accessor: 'Cargo' },
+  { label: 'Local', accessor: 'Local' },
+  { label: 'Estado', accessor: 'Estado' },
+  { label: 'Programado entrada', accessor: 'Programado entrada' },
+  { label: 'Entrada real', accessor: 'Entrada real' },
+  { label: 'Min tarde', accessor: 'Min tarde' },
+  { label: 'Programado salida', accessor: 'Programado salida' },
+  { label: 'Salida real', accessor: 'Salida real' },
+  { label: 'Diff salida (min)', accessor: 'Diff salida (min)' },
+  { label: 'Horas trabajadas', accessor: 'Horas trabajadas' },
+]

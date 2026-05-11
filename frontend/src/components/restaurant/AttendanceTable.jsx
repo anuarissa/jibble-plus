@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react'
 import { addDays, format, startOfWeek, addMonths, startOfMonth } from 'date-fns'
 import { ChevronLeft, ChevronRight, CalendarDays, Calendar, CalendarRange, Download, FileSpreadsheet } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
-import { tablaSemanal, vistaDia, tablaMensual } from '../../utils/stats'
+import { tablaSemanal, vistaDia, tablaMensual, celdaToRow, EXPORT_COLUMNS_ASISTENCIA } from '../../utils/stats'
 import { formatHoras, formatHora, formatFechaCorta, formatFecha } from '../../utils/format'
 import { exportCSV, exportExcel } from '../../utils/export'
+import { descargarReporteSemanal } from '../../utils/reporte-semanal'
 import { CeldaDetalleModal, MotivoBadge } from './CeldaDetalleModal'
 
 const MODOS = [
@@ -35,6 +36,15 @@ function colorDotSalida(salidaState) {
 function tooltipCelda(c, fechaLabel) {
   if (c.state === 'idle' && !c.falto) return `${fechaLabel} · Día libre`
   if (c.falto) return `${fechaLabel} · No fichó · Programado ${c.programadoStart}–${c.programadoEnd}`
+  if (c.motivoColor === 'diaLibreTrabajado') {
+    const partes = [
+      fechaLabel,
+      'Vino en día libre',
+      `Real ${c.fichaje?.clockIn ? formatHora(c.fichaje.clockIn) : '?'} → ${c.fichaje?.clockOut ? formatHora(c.fichaje.clockOut) : 'activo'}`,
+      c.horas != null ? `${formatHoras(c.horas)} trabajadas` : null,
+    ].filter(Boolean)
+    return partes.join(' · ')
+  }
   const partes = [
     fechaLabel,
     `Programado ${c.programadoStart}–${c.programadoEnd}`,
@@ -48,76 +58,7 @@ function tooltipCelda(c, fechaLabel) {
   return partes.join(' · ')
 }
 
-// Helpers de export — convierten una "celda" resuelta a fila plana
-function celdaToRow(empleado, c, nombreLocal) {
-  if (c.state === 'idle' && !c.falto) {
-    return {
-      Fecha: c.dayStr,
-      Empleado: empleado.fullName,
-      Cargo: empleado.position || '',
-      Local: nombreLocal,
-      Estado: 'Día libre',
-      'Programado entrada': '',
-      'Entrada real': '',
-      'Min tarde': '',
-      'Programado salida': '',
-      'Salida real': '',
-      'Diff salida (min)': '',
-      'Horas trabajadas': '',
-    }
-  }
-  if (c.falto) {
-    return {
-      Fecha: c.dayStr,
-      Empleado: empleado.fullName,
-      Cargo: empleado.position || '',
-      Local: nombreLocal,
-      Estado: 'No fichó',
-      'Programado entrada': c.programadoStart || '',
-      'Entrada real': '',
-      'Min tarde': '',
-      'Programado salida': c.programadoEnd || '',
-      'Salida real': '',
-      'Diff salida (min)': '',
-      'Horas trabajadas': '',
-    }
-  }
-  const estadoStr =
-    c.motivoColor === 'aTiempo' ? 'A tiempo' :
-    c.motivoColor === 'tardeEntrada' ? `Tarde entrada (+${c.mins}min)` :
-    c.motivoColor === 'salidaTemprana' ? `Salió ${Math.abs(c.minSalidaDiff || 0)}min antes` :
-    c.motivoColor === 'extras' ? `Quedó +${c.minSalidaDiff || 0}min extras` :
-    c.motivoColor === 'sinSalida' ? 'Sin salida (activo)' : '—'
-  return {
-    Fecha: c.dayStr,
-    Empleado: empleado.fullName,
-    Cargo: empleado.position || '',
-    Local: nombreLocal,
-    Estado: estadoStr,
-    'Programado entrada': c.programadoStart || '',
-    'Entrada real': c.fichaje?.clockIn ? formatHora(c.fichaje.clockIn) : '',
-    'Min tarde': c.mins || 0,
-    'Programado salida': c.programadoEnd || '',
-    'Salida real': c.fichaje?.clockOut ? formatHora(c.fichaje.clockOut) : '',
-    'Diff salida (min)': c.minSalidaDiff != null ? c.minSalidaDiff : '',
-    'Horas trabajadas': c.horas != null ? c.horas.toFixed(2) : '',
-  }
-}
-
-const EXPORT_COLUMNS = [
-  { label: 'Fecha', accessor: 'Fecha' },
-  { label: 'Empleado', accessor: 'Empleado' },
-  { label: 'Cargo', accessor: 'Cargo' },
-  { label: 'Local', accessor: 'Local' },
-  { label: 'Estado', accessor: 'Estado' },
-  { label: 'Programado entrada', accessor: 'Programado entrada' },
-  { label: 'Entrada real', accessor: 'Entrada real' },
-  { label: 'Min tarde', accessor: 'Min tarde' },
-  { label: 'Programado salida', accessor: 'Programado salida' },
-  { label: 'Salida real', accessor: 'Salida real' },
-  { label: 'Diff salida (min)', accessor: 'Diff salida (min)' },
-  { label: 'Horas trabajadas', accessor: 'Horas trabajadas' },
-]
+const EXPORT_COLUMNS = EXPORT_COLUMNS_ASISTENCIA
 
 export function AttendanceTable({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, cfg, group }) {
   const [modo, setModo] = useState('semana')
@@ -168,7 +109,7 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
         <SemanaView empleados={empleados} attendance={attendance} schedules={schedules}
                     condonaciones={condonaciones} turnos={turnos} personOverrides={personOverrides}
                     offset={offset} onCelda={(c, emp) => setDetalle({ celda: c, empleado: emp })}
-                    nombreLocal={nombreLocal} />
+                    nombreLocal={nombreLocal} cfg={cfg} group={group} />
       )}
       {modo === 'mes' && (
         <MesView empleados={empleados} attendance={attendance} schedules={schedules}
@@ -183,6 +124,7 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-warn" /> Tarde &lt;15min</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-bad" /> Tarde 15min+ / falta</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-idle/50" /> Día libre</span>
+        <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#06b6d4' }} /> Vino en día libre</span>
         <span className="font-semibold text-ink-100 ml-2">SALIDA:</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#0ea5e9' }} /> Hizo extras</span>
         <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: '#a855f7' }} /> Salió antes</span>
@@ -268,6 +210,9 @@ function DiaView({ empleados, attendance, schedules, condonaciones, turnos, pers
                   <td className="py-3.5 font-mono font-semibold text-ink-50">{horas != null ? formatHoras(horas) : <span className="text-ink-400">—</span>}</td>
                   <td className="py-3">
                     {falto && <span className="badge bg-bad/15 text-bad">No fichó</span>}
+                    {!falto && motivoColor === 'diaLibreTrabajado' && (
+                      <span className="badge" style={{ background: 'rgba(6,182,212,0.15)', color: '#22d3ee' }}>Vino en día libre</span>
+                    )}
                     {!falto && motivoColor === 'aTiempo' && <span className="badge bg-good/15 text-good">A tiempo</span>}
                     {!falto && (motivoColor === 'tardeEntrada' || motivoColor === 'sinSalida' || motivoColor === 'salidaTemprana' || motivoColor === 'extras') && (
                       <div className="flex flex-col gap-1 items-start">
@@ -306,8 +251,9 @@ function DiaView({ empleados, attendance, schedules, condonaciones, turnos, pers
 
 // ============== VISTA SEMANA ==============
 
-function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset, onCelda, nombreLocal }) {
+function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset, onCelda, nombreLocal, cfg, group }) {
   const ini = useMemo(() => addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), offset * 7), [offset])
+  const fin = useMemo(() => addDays(ini, 6), [ini])
   const data = useMemo(
     () => tablaSemanal({ empleados, attendance, schedules, ini, condonaciones, turnos, personOverrides }),
     [empleados, attendance, schedules, ini, condonaciones, turnos, personOverrides]
@@ -325,13 +271,25 @@ function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, p
   }, [data, nombreLocal])
   const fileBase = `asistencia_${nombreLocal.replace(/[^a-z0-9]+/gi, '_')}_sem_${format(ini, 'dd-MM-yyyy')}`
 
+  function generarReporte() {
+    descargarReporteSemanal({
+      empleados, attendance, schedules, condonaciones, turnos, personOverrides,
+      ini, fin, cfg, group,
+    })
+  }
+
   return (
     <>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <p className="text-sm font-medium text-ink-200">Semana del {format(ini, 'dd MMM')} al {format(addDays(ini, 6), 'dd MMM yyyy')}</p>
-        <div className="flex gap-2">
+        <p className="text-sm font-medium text-ink-200">Semana del {format(ini, 'dd MMM')} al {format(fin, 'dd MMM yyyy')}</p>
+        <div className="flex gap-2 flex-wrap">
           <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><Download size={15} /> CSV</button>
           <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><FileSpreadsheet size={15} /> Excel</button>
+          {cfg && group && (
+            <button onClick={generarReporte} className="btn-primary text-sm font-semibold" title="Excel con 4 hojas: Resumen, Asistencia, Tardanzas y Planilla">
+              <FileSpreadsheet size={15} /> Reporte semanal
+            </button>
+          )}
         </div>
       </div>
       <div className="overflow-x-auto scrollbar-thin">
@@ -363,6 +321,7 @@ function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, p
                 {cells.map((c, i) => {
                   const isClickable = c.fichaje || c.falto
                   const dotSalidaColor = colorDotSalida(c.salidaState)
+                  const isDiaLibreTrabajado = c.motivoColor === 'diaLibreTrabajado'
                   const fechaLabel = `${dayLabels[i]} ${format(c.day, 'dd MMM')}`
                   return (
                     <td
@@ -373,7 +332,10 @@ function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, p
                     >
                       <div className="flex flex-col items-center gap-1.5">
                         <div className="relative">
-                          <span className={`block w-3 h-3 rounded-full ${colorState[c.state]}`} />
+                          <span
+                            className={`block w-3 h-3 rounded-full ${isDiaLibreTrabajado ? '' : colorState[c.state]}`}
+                            style={isDiaLibreTrabajado ? { background: '#06b6d4' } : undefined}
+                          />
                           {dotSalidaColor && (
                             <span
                               className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-1 ring-bg-800"
@@ -466,6 +428,7 @@ function MesView({ empleados, attendance, schedules, condonaciones, turnos, pers
                 {cells.map((c, i) => {
                   const isClickable = c.fichaje || c.falto
                   const dotSalidaColor = colorDotSalida(c.salidaState)
+                  const isDiaLibreTrabajado = c.motivoColor === 'diaLibreTrabajado'
                   return (
                     <td
                       key={i}
@@ -474,7 +437,10 @@ function MesView({ empleados, attendance, schedules, condonaciones, turnos, pers
                       onClick={() => isClickable && onCelda(c, empleado)}
                     >
                       <span className="relative inline-block">
-                        <span className={`inline-block w-2.5 h-2.5 rounded-full ${colorState[c.state]}`} />
+                        <span
+                          className={`inline-block w-2.5 h-2.5 rounded-full ${isDiaLibreTrabajado ? '' : colorState[c.state]}`}
+                          style={isDiaLibreTrabajado ? { background: '#06b6d4' } : undefined}
+                        />
                         {dotSalidaColor && (
                           <span
                             className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full ring-1 ring-bg-800"
