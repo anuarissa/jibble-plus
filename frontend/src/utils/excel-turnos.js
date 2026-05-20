@@ -148,6 +148,7 @@ export async function parseExcelTurnos(file, empleados) {
   const warnings = []
   const errores = []
   const noEncontrados = new Set()
+  const ambiguos = new Map() // nombreRaw → [empleados que matchean por primer nombre]
   let celdasOk = 0
   let celdasIgnoradas = 0
 
@@ -158,9 +159,11 @@ export async function parseExcelTurnos(file, empleados) {
     if (!nombreRaw || nombreRaw.startsWith('(')) continue // saltar líneas tipo "(Sin empleados...)"
     if (nombreRaw.toLowerCase().startsWith('formato')) continue // skip hint line
 
-    const emp = empByNombre.get(normalizar(nombreRaw))
+    // Usa matchEmpleado para tolerar nombres parciales (ej "Alondra" → "Alondra Sbarro")
+    // y detectar ambigüedad cuando varios empleados comparten primer nombre.
+    const emp = matchEmpleado(empByNombre, nombreRaw, ambiguos)
     if (!emp) {
-      noEncontrados.add(nombreRaw)
+      if (!ambiguos.has(nombreRaw)) noEncontrados.add(nombreRaw)
       continue
     }
 
@@ -187,6 +190,11 @@ export async function parseExcelTurnos(file, empleados) {
 
   if (noEncontrados.size > 0) {
     warnings.push(`Empleados no encontrados (no se aplicaron): ${[...noEncontrados].join(', ')}`)
+  }
+  if (ambiguos.size > 0) {
+    for (const [raw, matches] of ambiguos) {
+      warnings.push(`"${raw}" en el Excel es ambiguo — matchea con ${matches.map(m => m.fullName).join(' y ')}. Escribí el nombre completo en el Excel para diferenciarlos.`)
+    }
   }
 
   return { aplicar, warnings, errores, celdasOk, celdasIgnoradas }
