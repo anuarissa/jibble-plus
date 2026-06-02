@@ -171,8 +171,8 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
                       <th className="text-left text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Empleado</th>
                       <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Fichados</th>
                       <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Faltas</th>
-                      <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Tarde</th>
-                      <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Extras</th>
+                      <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Días tarde</th>
+                      <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Días extras</th>
                       <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Horas</th>
                       <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">% Punt.</th>
                     </tr>
