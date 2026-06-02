@@ -8,6 +8,7 @@ import { exportCSV, exportExcel } from '../../utils/export'
 import { descargarReporteSemanal } from '../../utils/reporte-semanal'
 import { CeldaDetalleModal, MotivoBadge } from './CeldaDetalleModal'
 import { EmployeeReportModal } from './EmployeeReportModal'
+import { MonthlyReportModal } from './MonthlyReportModal'
 
 const MODOS = [
   { id: 'dia', label: 'Día', icon: Calendar },
@@ -66,6 +67,7 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
   const [offset, setOffset] = useState(0) // significado depende del modo
   const [detalle, setDetalle] = useState(null) // { celda, empleado }
   const [reporteEmpId, setReporteEmpId] = useState(null) // empleado para el reporte individual
+  const [reporteMensualAbierto, setReporteMensualAbierto] = useState(false)
 
   function ir(delta) { setOffset(o => o + delta) }
   function hoy() { setOffset(0) }
@@ -118,7 +120,8 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
         <MesView empleados={empleados} attendance={attendance} schedules={schedules}
                  condonaciones={condonaciones} turnos={turnos} personOverrides={personOverrides}
                  offset={offset} onCelda={(c, emp) => setDetalle({ celda: c, empleado: emp })}
-                 nombreLocal={nombreLocal} />
+                 onReporteMensual={() => setReporteMensualAbierto(true)}
+                 nombreLocal={nombreLocal} cfg={cfg} group={group} />
       )}
 
       <div className="flex items-center gap-x-4 gap-y-2 mt-5 pt-4 border-t border-white/5 text-sm text-ink-200 flex-wrap">
@@ -152,6 +155,17 @@ export function AttendanceTable({ empleados, attendance, schedules, condonacione
           group={group}
           initialEmployeeId={reporteEmpId}
           onClose={() => setReporteEmpId(null)}
+        />
+      )}
+
+      {reporteMensualAbierto && cfg && group && (
+        <MonthlyReportModal
+          empleados={empleados}
+          attendance={attendance}
+          schedules={schedules}
+          cfg={cfg}
+          group={group}
+          onClose={() => setReporteMensualAbierto(false)}
         />
       )}
     </div>
@@ -379,7 +393,7 @@ function SemanaView({ empleados, attendance, schedules, condonaciones, turnos, p
 
 // ============== VISTA MES ==============
 
-function MesView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset, onCelda, nombreLocal }) {
+function MesView({ empleados, attendance, schedules, condonaciones, turnos, personOverrides, offset, onCelda, onReporteMensual, nombreLocal, cfg, group }) {
   const mes = useMemo(() => addMonths(startOfMonth(new Date()), offset), [offset])
   const data = useMemo(
     () => tablaMensual({ empleados, attendance, schedules, mes, condonaciones, turnos, personOverrides }),
@@ -410,9 +424,14 @@ function MesView({ empleados, attendance, schedules, condonaciones, turnos, pers
           <p className="text-sm text-ink-200">
             {totalEmp} empleados · <span className="text-good font-semibold">{totalATiempo}</span> a tiempo · <span className="text-bad font-semibold">{totalTardanzas}</span> tarde · <span className="font-semibold text-ink-100">{formatHoras(totalHorasMes)}</span> totales
           </p>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button onClick={() => exportCSV(fileBase, exportRows, EXPORT_COLUMNS)} className="btn-secondary text-sm font-semibold"><Download size={15} /> CSV</button>
             <button onClick={() => exportExcel(fileBase, exportRows, EXPORT_COLUMNS, { rowHighlight: r => r?.Estado === 'No fichó' })} className="btn-secondary text-sm font-semibold"><FileSpreadsheet size={15} /> Excel</button>
+            {cfg && group && onReporteMensual && (
+              <button onClick={onReporteMensual} className="btn-primary text-sm font-semibold" title="Reporte ejecutivo del mes con KPIs, ranking, calendario y PDF imprimible">
+                <FileSpreadsheet size={15} /> Reporte mensual
+              </button>
+            )}
           </div>
         </div>
       </div>
