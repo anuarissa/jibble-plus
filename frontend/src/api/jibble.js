@@ -96,28 +96,40 @@ export async function getHealth() {
   return data
 }
 
-export async function getGroups() {
-  return getWithCache('/jibble/groups', {}, 'groups')
+// Workspaces: lista las cuentas Jibble configuradas en el deploy.
+export async function getWorkspaces() {
+  const { data } = await api.get('/workspaces')
+  return data
 }
 
-export async function getPeople() {
-  return getWithCache('/jibble/people', {}, 'people')
+// El parámetro `ws` filtra por una cuenta Jibble específica:
+//   undefined / 'all' → todas las cuentas fusionadas (default, comportamiento legacy)
+//   '1' / '2' / 'A' / 'B' → solo esa cuenta
+// La cache es por-workspace para que cambiar de cuenta muestre datos correctos.
+function wsKey(ws) { return ws ? `ws${ws}` : 'all' }
+
+export async function getGroups(ws) {
+  return getWithCache('/jibble/groups', { ws }, `groups_${wsKey(ws)}`)
 }
 
-export async function getAttendance({ from, to, groupId } = {}) {
-  return getWithCache('/jibble/attendance', { from, to, groupId }, `attendance_${from}_${to}_${groupId || 'all'}`)
+export async function getPeople(ws) {
+  return getWithCache('/jibble/people', { ws }, `people_${wsKey(ws)}`)
 }
 
-export async function getTimesheet({ from, to, groupId } = {}) {
-  return getWithCache('/jibble/timesheet', { from, to, groupId }, `timesheet_${from}_${to}_${groupId || 'all'}`)
+export async function getAttendance({ from, to, groupId, ws } = {}) {
+  return getWithCache('/jibble/attendance', { from, to, groupId, ws }, `attendance_${from}_${to}_${groupId || 'all'}_${wsKey(ws)}`)
 }
 
-export async function getWorkSchedules() {
-  return getWithCache('/jibble/workSchedules', {}, 'workSchedules')
+export async function getTimesheet({ from, to, groupId, ws } = {}) {
+  return getWithCache('/jibble/timesheet', { from, to, groupId, ws }, `timesheet_${from}_${to}_${groupId || 'all'}_${wsKey(ws)}`)
 }
 
-export async function getActive() {
+export async function getWorkSchedules(ws) {
+  return getWithCache('/jibble/workSchedules', { ws }, `workSchedules_${wsKey(ws)}`)
+}
+
+export async function getActive(ws) {
   // No cacheamos los activos — necesitan ser fresh.
-  const { data } = await api.get('/jibble/active')
+  const { data } = await api.get('/jibble/active', { params: { ws } })
   return data
 }

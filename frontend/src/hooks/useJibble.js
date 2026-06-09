@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { format, addDays } from 'date-fns'
 import * as jibble from '../api/jibble'
 import { getScheduleForPerson, shouldSkipPerson, resolveGroupId, resolveCargo, EMPLOYEE_OVERRIDES } from '../config/employees'
+import { useActiveWorkspace } from './useActiveWorkspace'
 
 // Skip hardcoded (Owner) — siempre filtrar, no editable por usuario
 function EMPLOYEE_HARDCODED_SKIP(personId) {
@@ -15,6 +16,7 @@ function EMPLOYEE_HARDCODED_SKIP(personId) {
 const POLL_MS = 5 * 60 * 1000 // 5 min
 
 export function useJibble(personOverrides = {}) {
+  const { active: activeWs } = useActiveWorkspace()
   const [raw, setRaw] = useState({
     groups: null,
     peopleRaw: null,
@@ -26,9 +28,12 @@ export function useJibble(personOverrides = {}) {
   const [error, setError] = useState(null)
   const [health, setHealth] = useState(null)
 
+  const wsParam = activeWs && activeWs !== 'all' ? activeWs : undefined
+
   const fetchAll = useCallback(async () => {
     try {
       setError(null)
+      setLoading(true)
       const today = new Date()
       // 60 días: cubre mes anterior + mes actual completos para vista mensual
       const from = format(addDays(today, -60), 'yyyy-MM-dd')
@@ -36,11 +41,11 @@ export function useJibble(personOverrides = {}) {
 
       const [healthRes, groups, peopleRaw, schedulesArr, attendance, active] = await Promise.all([
         jibble.getHealth().catch(() => null),
-        jibble.getGroups(),
-        jibble.getPeople(),
-        jibble.getWorkSchedules(),
-        jibble.getAttendance({ from, to }),
-        jibble.getActive(),
+        jibble.getGroups(wsParam),
+        jibble.getPeople(wsParam),
+        jibble.getWorkSchedules(wsParam),
+        jibble.getAttendance({ from, to, ws: wsParam }),
+        jibble.getActive(wsParam),
       ])
       const schedulesRaw = Object.fromEntries((schedulesArr || []).map(s => [s.personId, s]))
       setHealth(healthRes)
@@ -51,7 +56,7 @@ export function useJibble(personOverrides = {}) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [wsParam])
 
   useEffect(() => {
     fetchAll()

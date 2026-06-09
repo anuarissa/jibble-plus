@@ -1,14 +1,17 @@
 import { useJibble } from '../hooks/useJibble'
 import { useAlerts } from '../hooks/useAlerts'
+import { useActiveWorkspace } from '../hooks/useActiveWorkspace'
 import { GlobalStats } from '../components/dashboard/GlobalStats'
 import { RestaurantCard } from '../components/dashboard/RestaurantCard'
 import { AlertsPanel } from '../components/dashboard/AlertsPanel'
+import { WorkspaceSwitcher } from '../components/WorkspaceSwitcher'
 import { Skeleton } from '../components/ui/Skeleton'
 import { statsRestaurante, statsGlobales } from '../utils/stats'
 import { RefreshCw } from 'lucide-react'
 import { format } from 'date-fns'
 
 export default function Dashboard({ cfg }) {
+  const ws = useActiveWorkspace()
   const data = useJibble(cfg.personOverrides)
   const alerts = useAlerts({
     active: data.active,
@@ -46,7 +49,8 @@ export default function Dashboard({ cfg }) {
           </div>
           <h1 className="text-4xl font-display font-bold tracking-tightest">Panel de control</h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <WorkspaceSwitcher workspaces={ws.workspaces} active={ws.active} onChange={ws.setActive} />
           <span className="text-xs text-ink-300">
             {data.health?.mode === 'live' ? '🟢 Datos reales' : '🟡 Modo demo'}
           </span>

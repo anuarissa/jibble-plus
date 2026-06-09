@@ -1,7 +1,7 @@
 import { requireAuth } from '../../lib/auth.js'
-import { jibble, useMock, mock, jibbleHandler } from '../../lib/jibble-singleton.js'
+import { jibbleAll, useMock, mock, jibbleHandler } from '../../lib/jibble-singleton.js'
 
-export default requireAuth(jibbleHandler(async () => {
+export default requireAuth(jibbleHandler(async (req) => {
   if (useMock) return mock.groups
-  return await jibble().getGroups()
+  return await jibbleAll(req.query?.ws).getGroups()
 }))
