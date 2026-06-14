@@ -32,8 +32,19 @@ export function planillaEmpleado(empleado, fichajes, tardanzas, config = {}) {
   const esperadas = Number(empleado.expectedHoursPerWeek) || 0
 
   const horasTotales = sumarHoras(fichajes, ahora)
-  const horasNormales = Math.min(horasTotales, esperadas)
-  const horasExtra = Math.max(0, horasTotales - esperadas)
+
+  // Modelo de horas extra:
+  //  - Si el caller pasa config.horasExtraDia (extras calculadas POR DÍA desde stats:
+  //    solo lo que pasa de 30 min tras la salida programada), se usa ese valor.
+  //  - Si no (llamadas legacy), cae al modelo semanal: total - esperadas.
+  let horasExtra, horasNormales
+  if (config.horasExtraDia != null) {
+    horasExtra = Math.max(0, config.horasExtraDia)
+    horasNormales = Math.max(0, horasTotales - horasExtra)
+  } else {
+    horasNormales = Math.min(horasTotales, esperadas)
+    horasExtra = Math.max(0, horasTotales - esperadas)
+  }
 
   const baseTarifa = horasNormales * tarifa
   const extraTarifa = horasExtra * tarifa * mult
@@ -65,12 +76,17 @@ export function planillaEmpleado(empleado, fichajes, tardanzas, config = {}) {
 }
 
 // Agrega planillas de todos los empleados de un local en una sola corrida.
+//   config.horasExtraPorPersona (opcional): { [personId]: horasExtra calculadas por día }.
+//     Si se pasa, cada empleado usa su valor (modelo "extra solo lo que pasa de 30 min/día").
 export function planillaLocal(empleados, fichajesPorPersona, tardanzasPorPersona, config = {}) {
+  const extraPorPersona = config.horasExtraPorPersona || null
   const filas = empleados.map(emp => planillaEmpleado(
     emp,
     fichajesPorPersona[emp.id] || [],
     tardanzasPorPersona[emp.id] || [],
-    config,
+    extraPorPersona
+      ? { ...config, horasExtraDia: extraPorPersona[emp.id] ?? 0 }
+      : config,
   ))
   const totales = filas.reduce((acc, f) => ({
     horasNormales: acc.horasNormales + f.horasNormales,

@@ -2,7 +2,7 @@
 // Consolida lógica que necesitan Dashboard, vistas por restaurante y comparativos.
 
 import { startOfWeek, endOfWeek, format, isWithinInterval, parseISO, addDays, startOfMonth, endOfMonth, getDaysInMonth, getDate } from 'date-fns'
-import { detectarTardanzasEnRango, minutosTarde, minutosDiff } from './lateness'
+import { detectarTardanzasEnRango, minutosTarde, minutosDiff, calcularMulta } from './lateness'
 import { planillaEmpleado, sumarHoras } from './payroll'
 import { isoWeekKey, dayOfWeek, getTurnoEfectivo, getDefaultParaDia, normalizarCelda } from './turnos'
 import { formatHora } from './format'
@@ -195,8 +195,10 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
   }
 
   // SALIDA: comparar clockOut vs endTimeProgramado
-  // Tolerancia: ±5 min se considera "a tiempo".
+  // Tolerancia: ±5 min "a tiempo". EXTRA solo si se quedó >30 min después
+  // (regla del local: quedadas cortas no cuentan como hora extra).
   const SALIDA_TOLERANCE = 5
+  const EXTRA_UMBRAL = 30
   let salidaState = null     // 'aTiempo' | 'temprano' | 'extras' | 'sinSalida'
   let minSalidaDiff = null   // signo: + = se quedó después, - = se fue antes
   if (!fich.clockOut && fich.clockIn) {
@@ -205,7 +207,7 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
     const diff = minutosDiff(endTimeProgramado, fich.clockOut)
     if (diff != null) {
       minSalidaDiff = diff
-      if (diff > SALIDA_TOLERANCE) salidaState = 'extras'
+      if (diff > EXTRA_UMBRAL) salidaState = 'extras'
       else if (diff < -SALIDA_TOLERANCE) salidaState = 'temprano'
       else salidaState = 'aTiempo'
     }
@@ -222,12 +224,28 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
   // Horas: si está fichando ahora (sin clockOut), calculamos hasta el momento actual
   const outRef = fich.clockOut ? new Date(fich.clockOut) : new Date()
   const horas = (outRef - new Date(fich.clockIn)) / 3600000
+
+  // Minutos extra que SÍ cuentan: solo lo que pasa de 30 min tras la salida programada.
+  // Se descartan diffs absurdos (>=600 min = cruce de medianoche mal interpretado).
+  const minExtraComputado = (minSalidaDiff != null && minSalidaDiff > 30 && minSalidaDiff < 600)
+    ? minSalidaDiff - 30 : 0
+
+  // Anomalía: dato sospechoso ACCIONABLE para revisar (no contamina totales).
+  // No incluye cierres post-medianoche de turnos PM (eso es normal, no un error).
+  const anomalia = !!(
+    salidaState === 'sinSalida' ||                          // no marcó salida
+    (horas != null && horas > 16) ||                        // olvidó cerrar → horas absurdas
+    mins > 180                                              // entró 3h+ tarde = horario mal configurado
+  )
+
   return {
     state, day, dayStr, fichaje: fich, horas, mins,
     programadoStart: startTimeProgramado,
     programadoEnd: endTimeProgramado,
     salidaState,
     minSalidaDiff,
+    minExtraComputado,
+    anomalia,
     motivoColor,
     turnoCustom,
   }
@@ -277,6 +295,22 @@ export function tablaSemanal({ empleados, attendance, schedules, ini, condonacio
     return { empleado: emp, cells, totalHoras }
   })
   return { dias, filas }
+}
+
+// Agrega los retrasos (tiempo + multa Bs) y extras (solo lo que pasa de 30 min/día)
+// de un conjunto de celdas resueltas. Base del cálculo monetario y de planilla.
+//   minTarde:   suma de minutos de retraso de entrada del período
+//   multaBs:    suma de multas (regla escalonada calcularMulta)
+//   horasExtra: suma de horas extra computadas (solo >30 min/día, descartando anomalías)
+//   anomalias:  cantidad de días con datos sospechosos a revisar
+export function extrasYRetrasoDeCells(cells) {
+  let minExtra = 0, minTarde = 0, multaBs = 0, anomalias = 0
+  for (const c of (cells || [])) {
+    if (c.anomalia) { anomalias++; continue }  // días raros van a "revisar", no suman a totales
+    minExtra += c.minExtraComputado || 0
+    if (c.mins > 0) { minTarde += c.mins; multaBs += calcularMulta(c.mins) }
+  }
+  return { horasExtra: minExtra / 60, minExtra, minTarde, multaBs, anomalias }
 }
 
 // Convierte una "celda" resuelta (de vistaDia/tablaSemanal) a una fila plana

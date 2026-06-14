@@ -8,7 +8,7 @@
 
 import { format, addDays } from 'date-fns'
 import { tablaSemanal, tardanzasConCondonacion, attendanceEnRango, groupByPerson,
-         celdaToRow, EXPORT_COLUMNS_ASISTENCIA } from './stats'
+         celdaToRow, EXPORT_COLUMNS_ASISTENCIA, extrasYRetrasoDeCells } from './stats'
 import { planillaLocal } from './payroll'
 import { formatHora } from './format'
 import { exportExcelMultiSheet } from './export'
@@ -36,8 +36,14 @@ export function descargarReporteSemanal({
       expectedHoursPerWeek: sched?.expectedHoursPerWeek ?? 0,
     }
   })
+  // Horas extra POR DÍA (solo lo que pasa de 30 min tras la salida programada)
+  const horasExtraPorPersona = {}
+  for (const fila of semana.filas) {
+    horasExtraPorPersona[fila.empleado.id] = extrasYRetrasoDeCells(fila.cells).horasExtra
+  }
   const planilla = planillaLocal(empleadosConTarifa, fichajesPorPersona, tardanzasPorPersona, {
     multiplicadorExtra: cfg.config.settings.multiplicadorExtra,
+    horasExtraPorPersona,
   })
 
   // === MÉTRICAS PARA RESUMEN ===

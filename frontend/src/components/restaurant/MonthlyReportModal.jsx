@@ -5,7 +5,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { addMonths, startOfMonth, endOfMonth, format } from 'date-fns'
 import { X, ChevronLeft, ChevronRight, Printer, FileSpreadsheet, Calendar, AlertTriangle, DollarSign, Users, TrendingUp } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
-import { tablaMensual, tardanzasConCondonacion, attendanceEnRango, groupByPerson } from '../../utils/stats'
+import { tablaMensual, tablaSemanal, tardanzasConCondonacion, attendanceEnRango, groupByPerson, extrasYRetrasoDeCells } from '../../utils/stats'
 import { planillaLocal } from '../../utils/payroll'
 import { formatHoras, formatBs } from '../../utils/format'
 import { descargarReporteMensual } from '../../utils/reporte-mensual'
@@ -49,15 +49,17 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
     const totalMinTarde = tardanzasActivas.reduce((s, t) => s + (t.minutosTarde || 0), 0)
     const pctPuntualidad = totalFichados > 0 ? (totalATiempo / totalFichados) * 100 : 0
 
-    // Ranking
+    // Ranking — incluye min tarde, multa Bs y anomalías por empleado
     const ranking = data.filas.map(fila => {
       const fichados = fila.cells.filter(c => c.fichaje && !c.falto).length
       const aTiempo = fila.cells.filter(c => c.motivoColor === 'aTiempo').length
       const tardanzasEmp = fila.cells.filter(c => c.motivoColor === 'tardeEntrada').length
       const extras = fila.cells.filter(c => c.motivoColor === 'extras').length
       const pct = fichados > 0 ? (aTiempo / fichados) * 100 : 0
+      const agg = extrasYRetrasoDeCells(fila.cells)
       return { empleado: fila.empleado, fichados, faltas: fila.faltas, aTiempo,
-        tardanzas: tardanzasEmp, extras, totalHoras: fila.totalHoras, pct }
+        tardanzas: tardanzasEmp, extras, totalHoras: fila.totalHoras, pct,
+        minTarde: agg.minTarde, multaBs: agg.multaBs, anomalias: agg.anomalias }
     }).sort((a, b) => b.pct - a.pct)
 
     // Planilla mensual (iteramos semanas)
@@ -74,8 +76,14 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
         const d = new Date(t.date + 'T00:00:00')
         return d >= semanaIni && d <= semanaFin
       })
+      const tablaSem = tablaSemanal({ empleados, attendance, schedules, ini: new Date(semanaIni),
+        condonaciones: cfg.condonaciones, turnos: cfg.turnos, personOverrides: cfg.personOverrides })
+      const horasExtraPorPersona = {}
+      for (const fila of tablaSem.filas) {
+        horasExtraPorPersona[fila.empleado.id] = extrasYRetrasoDeCells(fila.cells).horasExtra
+      }
       const ps = planillaLocal(empleadosConTarifa, groupByPerson(fichSem), groupByPerson(tardSem),
-        { multiplicadorExtra: cfg.config.settings.multiplicadorExtra })
+        { multiplicadorExtra: cfg.config.settings.multiplicadorExtra, horasExtraPorPersona })
       for (const f of ps.filas) {
         if (!acc[f.personId]) acc[f.personId] = { totalAPagar: 0, bruto: 0, descuentoTardanza: 0 }
         acc[f.personId].totalAPagar += f.totalAPagar
@@ -172,6 +180,8 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
                       <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Fichados</th>
                       <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Faltas</th>
                       <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Días tarde</th>
+                      <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Min tarde</th>
+                      <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Descuento</th>
                       <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Días extras</th>
                       <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">Horas</th>
                       <th className="text-right text-xs uppercase tracking-wider font-bold text-ink-100 px-3 py-2.5">% Punt.</th>
@@ -191,6 +201,11 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
                             <div className="flex items-center gap-2.5">
                               <Avatar name={r.empleado.fullName} id={r.empleado.id} size="sm" />
                               <span className="font-semibold text-ink-50">{r.empleado.fullName}</span>
+                              {r.anomalias > 0 && (
+                                <span className="badge bg-bad/15 text-bad print-bad text-[10px]" title="Tiene días con datos raros para revisar">
+                                  <AlertTriangle size={10} /> {r.anomalias} revisar
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono font-semibold">{r.fichados}</td>
@@ -198,6 +213,12 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
                             {r.faltas > 0 ? <span className="text-bad print-bad">{r.faltas}</span> : <span className="text-ink-400 print-muted">—</span>}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono font-semibold">{r.tardanzas}</td>
+                          <td className="px-3 py-2.5 text-right font-mono font-semibold">
+                            {r.minTarde > 0 ? <span className="text-warn print-warn">{r.minTarde} min</span> : <span className="text-ink-400 print-muted">—</span>}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono font-semibold">
+                            {r.multaBs > 0 ? <span className="text-bad print-bad">−{formatBs(r.multaBs)}</span> : <span className="text-ink-400 print-muted">—</span>}
+                          </td>
                           <td className="px-3 py-2.5 text-right font-mono font-semibold">
                             {r.extras > 0 ? <span className="text-accent-400">{r.extras}</span> : <span className="text-ink-400 print-muted">—</span>}
                           </td>

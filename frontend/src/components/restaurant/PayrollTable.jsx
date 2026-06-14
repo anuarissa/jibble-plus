@@ -3,7 +3,7 @@ import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, Cal
 import { addDays, startOfWeek, format, addMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { Avatar } from '../ui/Avatar'
 import { planillaLocal } from '../../utils/payroll'
-import { attendanceEnRango, groupByPerson, tardanzasConCondonacion } from '../../utils/stats'
+import { attendanceEnRango, groupByPerson, tardanzasConCondonacion, tablaSemanal, extrasYRetrasoDeCells } from '../../utils/stats'
 import { formatBs, formatHoras } from '../../utils/format'
 import { exportCSV, exportExcel } from '../../utils/export'
 
@@ -56,8 +56,16 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
       const tardanzas = tardanzasConCondonacion(attendance, schedules, cfg.condonaciones, iniS, finS, cfg.turnos, cfg.personOverrides)
         .filter(t => t.groupId === group.id)
       const tardanzasPorPersona = groupByPerson(tardanzas)
+      // Horas extra POR DÍA (solo lo que pasa de 30 min tras la salida programada)
+      const tabla = tablaSemanal({ empleados, attendance, schedules, ini: iniS,
+        condonaciones: cfg.condonaciones, turnos: cfg.turnos, personOverrides: cfg.personOverrides })
+      const horasExtraPorPersona = {}
+      for (const fila of tabla.filas) {
+        horasExtraPorPersona[fila.empleado.id] = extrasYRetrasoDeCells(fila.cells).horasExtra
+      }
       return planillaLocal(empleadosConTarifa, fichajesPorPersona, tardanzasPorPersona, {
         multiplicadorExtra: cfg.config.settings.multiplicadorExtra,
+        horasExtraPorPersona,
       })
     }
 

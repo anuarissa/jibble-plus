@@ -3,8 +3,8 @@
 // Análogo a reporte-semanal.js pero a 30/31 días.
 
 import { format, addDays, startOfMonth, endOfMonth, startOfWeek } from 'date-fns'
-import { tablaMensual, tardanzasConCondonacion, attendanceEnRango, groupByPerson,
-         celdaToRow, EXPORT_COLUMNS_ASISTENCIA } from './stats'
+import { tablaMensual, tablaSemanal, tardanzasConCondonacion, attendanceEnRango, groupByPerson,
+         celdaToRow, EXPORT_COLUMNS_ASISTENCIA, extrasYRetrasoDeCells } from './stats'
 import { planillaLocal } from './payroll'
 import { formatHora } from './format'
 import { exportExcelMultiSheet } from './export'
@@ -43,8 +43,16 @@ export function descargarReporteMensual({
       const d = new Date(t.date + 'T00:00:00')
       return d >= semanaIni && d <= semanaFin
     })
+    // Horas extra POR DÍA de esa semana (solo lo que pasa de 30 min tras la salida)
+    const tablaSem = tablaSemanal({ empleados, attendance, schedules, ini: semanaIni,
+      condonaciones, turnos, personOverrides })
+    const horasExtraPorPersona = {}
+    for (const fila of tablaSem.filas) {
+      horasExtraPorPersona[fila.empleado.id] = extrasYRetrasoDeCells(fila.cells).horasExtra
+    }
     const planSem = planillaLocal(empleadosConTarifa, groupByPerson(fichajesSem), groupByPerson(tardanzasSem), {
       multiplicadorExtra: cfg.config.settings.multiplicadorExtra,
+      horasExtraPorPersona,
     })
     for (const fila of planSem.filas) {
       if (!acc[fila.personId]) {
@@ -108,15 +116,20 @@ export function descargarReporteMensual({
     const tardanzasEmp = fila.cells.filter(c => c.motivoColor === 'tardeEntrada').length
     const extras = fila.cells.filter(c => c.motivoColor === 'extras').length
     const pct = fichados > 0 ? (aTiempo / fichados) * 100 : 0
+    const agg = extrasYRetrasoDeCells(fila.cells)
     return {
       Empleado: fila.empleado.fullName,
       Cargo: fila.empleado.position || '',
       'Días fichados': fichados,
       Faltas: fila.faltas,
-      Tardanzas: tardanzasEmp,
-      Extras: extras,
+      'Días tarde': tardanzasEmp,
+      'Min tarde': agg.minTarde,
+      'Multa (Bs)': agg.multaBs,
+      'Días extras': extras,
       'Horas trabajadas': r2(fila.totalHoras),
+      'A revisar': agg.anomalias > 0 ? `${agg.anomalias} día(s) raros` : '',
       '% Puntualidad': `${pct.toFixed(0)}%`,
+      _anomalia: agg.anomalias > 0,
     }
   }).sort((a, b) => parseFloat(b['% Puntualidad']) - parseFloat(a['% Puntualidad']))
 
@@ -245,13 +258,17 @@ export function descargarReporteMensual({
         { label: 'Cargo', accessor: 'Cargo', width: 16 },
         { label: 'Días fichados', accessor: 'Días fichados', width: 13, numFmt: '0' },
         { label: 'Faltas', accessor: 'Faltas', width: 10, numFmt: '0' },
-        { label: 'Días tarde', accessor: 'Tardanzas', width: 12, numFmt: '0' },
-        { label: 'Días extras', accessor: 'Extras', width: 12, numFmt: '0' },
+        { label: 'Días tarde', accessor: 'Días tarde', width: 11, numFmt: '0' },
+        { label: 'Min tarde', accessor: 'Min tarde', width: 10, numFmt: '0' },
+        { label: 'Multa (Bs)', accessor: 'Multa (Bs)', width: 12, numFmt: '"Bs" #,##0.00' },
+        { label: 'Días extras', accessor: 'Días extras', width: 11, numFmt: '0' },
         { label: 'Horas trabajadas', accessor: 'Horas trabajadas', width: 16, numFmt: '0.00' },
+        { label: 'A revisar', accessor: 'A revisar', width: 16 },
         { label: '% Puntualidad', accessor: '% Puntualidad', width: 14 },
       ],
       rows: rankingRows,
-      rowHighlight: (row) => row?.Faltas >= 10,  // pinta rojo si tiene 10+ faltas
+      // Rojo si tiene 10+ faltas o días con datos raros para revisar
+      rowHighlight: (row) => row?.Faltas >= 10 || row?._anomalia === true,
     },
     {
       name: 'ASISTENCIA',
