@@ -106,7 +106,7 @@
 <div class="kpi-grid">
   <div class="kpi"><div class="icon">⚠️</div><div class="label">Min tarde + Bs</div><div class="value" id="k-mintarde" style="color:#B45309;">1530</div><div class="delta" id="k-mintarde-d">= Bs 2.660,00 descontados</div></div>
   <div class="kpi"><div class="icon">🚫</div><div class="label">No registró (días)</div><div class="value" id="k-noreg" style="color:#B91C1C;">8</div><div class="delta" id="k-noreg-d">= Bs 160,00 descontados (20 c/u)</div></div>
-  <div class="kpi"><div class="icon">⏱️</div><div class="label">Extras a pagar</div><div class="value" id="k-extra" style="color:#0369A1;">Bs 906,81</div><div class="delta" id="k-extra-d">2638 min (solo >30/día × 1.5)</div></div>
+  <div class="kpi"><div class="icon">⏱️</div><div class="label">Min extra + Bs</div><div class="value" id="k-extra" style="color:#0369A1;">2638</div><div class="delta" id="k-extra-d">= Bs 906,81 a pagar (>30/día × 1.5)</div></div>
   <div class="kpi"><div class="icon">✅</div><div class="label">% Puntualidad</div><div class="value" id="k-punt" style="color:#DC2626;">18%</div><div class="delta" id="k-punt-d">32 de 175 · 1603h 29m pagables</div></div>
 </div>
 <div id="caja-total" style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:12px 16px;margin-bottom:8px;font-size:14px;color:#7F1D1D;">
@@ -3570,8 +3570,8 @@ function pintarKPIs(v){
   document.getElementById('k-mintarde-d').textContent = '= ' + fmtBs(k.multaBs) + ' descontados';
   document.getElementById('k-noreg').textContent = k.diasNoRegistro;
   document.getElementById('k-noreg-d').textContent = '= ' + fmtBs(k.descNoReg) + ' descontados (20 c/u)';
-  document.getElementById('k-extra').textContent = fmtBs(k.bsExtra);
-  document.getElementById('k-extra-d').textContent = k.minExtra + ' min (solo >30/día × 1.5)';
+  document.getElementById('k-extra').textContent = k.minExtra;
+  document.getElementById('k-extra-d').textContent = '= ' + fmtBs(k.bsExtra) + ' a pagar (>30/día × 1.5)';
   var pe = document.getElementById('k-punt');
   pe.textContent = Math.round(k.pct) + '%';
   pe.style.color = k.pct >= 50 ? '#16A34A' : '#DC2626';
