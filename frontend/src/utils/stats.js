@@ -7,8 +7,24 @@ import { planillaEmpleado, sumarHoras } from './payroll'
 import { isoWeekKey, dayOfWeek, getTurnoEfectivo, getDefaultParaDia, normalizarCelda } from './turnos'
 import { formatHora } from './format'
 
+// De un conjunto de tramos, devuelve el startTime del tramo cuya entrada está
+// MÁS CERCA del clockIn real. Para turnos partidos: así cada fichaje (mañana/tarde)
+// se compara contra la entrada de SU tramo. Sin clockIn → primer tramo.
+function startTimeDeTramoMasCercano(segments, clockIn) {
+  if (!segments?.length) return null
+  if (!clockIn) return segments[0].startTime
+  let best = segments[0], bestDiff = Infinity
+  for (const seg of segments) {
+    const d = minutosDiff(seg.startTime, clockIn)
+    const abs = d == null ? Infinity : Math.abs(d)
+    if (abs < bestDiff) { bestDiff = abs; best = seg }
+  }
+  return best.startTime
+}
+
 // Construye el resolver getStartTimeForFichaje a partir de turnos + schedules + defaults.
 // Devuelve "OFF" si el día está marcado off, "HH:MM" si hay hora programada, o null si no hay nada.
+// En turnos partidos elige el tramo cuya entrada está más cerca del clockIn del fichaje.
 export function buildStartTimeResolver(turnos, schedules, personOverrides = {}) {
   const schedByPerson = new Map((schedules || []).map(s => [s.personId, s]))
   return (fichaje) => {
@@ -18,11 +34,13 @@ export function buildStartTimeResolver(turnos, schedules, personOverrides = {}) 
     const celda = normalizarCelda(turnos?.[wk]?.[fichaje.personId]?.[String(dow)])
     // Celda explícita: prevalece
     if (celda?.tipo === 'OFF') return 'OFF'
+    if (celda?.segments) return startTimeDeTramoMasCercano(celda.segments, fichaje.clockIn)
     if (celda?.startTime) return celda.startTime
     // celda null o tipo:'default' → usar default por día del empleado
     const sched = schedByPerson.get(fichaje.personId)
     const def = getDefaultParaDia(fichaje.personId, dow, personOverrides, sched)
     if (def?.tipo === 'OFF') return 'OFF'
+    if (def?.segments) return startTimeDeTramoMasCercano(def.segments, fichaje.clockIn)
     if (def?.startTime) return def.startTime
     return null
   }
@@ -129,17 +147,109 @@ export function statsGlobales({ groups, ...rest }) {
   return { totalEmpleados: totalEmp, horasSemana: horas, planillaSemana: planilla, puntualidadGlobal: punt }
 }
 
+// Resuelve un día de TURNO PARTIDO (≥2 tramos). Empareja, en orden, cada tramo con
+// su sesión de fichaje (tramo[i] ↔ sesión[i]) y mide la tardanza de CADA tramo.
+//   mins        = suma de minutos tarde de todos los tramos (para mostrar/totalizar)
+//   multaDia    = suma de multas por tramo (escalonada por tramo, no por el total)
+//   horas       = suma de duraciones reales de cada sesión (excluye el hueco)
+//   salida/extra = se miden contra el ÚLTIMO tramo
+function resolverDiaPartido({ segments, fichajesDelDia, condonaciones, turnoCustom, day, dayStr }) {
+  const SALIDA_TOLERANCE = 5
+  const EXTRA_UMBRAL = 30
+  const sesiones = [...fichajesDelDia].sort((a, b) =>
+    new Date(a.clockIn || a.date) - new Date(b.clockIn || b.date))
+  const primera = sesiones[0]
+  const ultima = sesiones[sesiones.length - 1]
+  const clockOut = ultima?.clockOut || null
+
+  // Tardanza por tramo: asignación ordenada tramo[i] ↔ sesión[i]
+  let minsTotal = 0, maxMin = 0, multaDia = 0
+  for (let i = 0; i < segments.length; i++) {
+    const ses = sesiones[i]
+    if (!ses?.clockIn) continue
+    let m = minutosTarde(segments[i].startTime, ses.clockIn)
+    if (condonaciones?.[ses.id]?.condonada) m = 0
+    if (m > 0) { minsTotal += m; multaDia += calcularMulta(m); if (m > maxMin) maxMin = m }
+  }
+
+  // Horas reales = suma de duraciones de cada sesión (sin contar el hueco entre tramos)
+  let horas = 0
+  for (const s of sesiones) {
+    if (s.clockIn && s.clockOut) horas += (new Date(s.clockOut) - new Date(s.clockIn)) / 3600000
+    else if (s.clockIn && !s.clockOut) horas += (new Date() - new Date(s.clockIn)) / 3600000
+  }
+
+  // Horas programadas = suma de los tramos
+  let horasProgramadas = 0
+  for (const seg of segments) {
+    const [sh, sm] = seg.startTime.split(':').map(Number)
+    const [eh, em] = seg.endTime.split(':').map(Number)
+    let d = (eh * 60 + em) - (sh * 60 + sm)
+    if (d < 0) d += 24 * 60
+    horasProgramadas += d / 60
+  }
+
+  // Salida: contra el fin del ÚLTIMO tramo
+  const ultimaSeg = segments[segments.length - 1]
+  const algunaSinSalida = sesiones.some(s => s.clockIn && !s.clockOut)
+  const algunaSinEntrada = sesiones.some(s => !s.clockIn && s.clockOut)
+  let salidaState = null, minSalidaDiff = null
+  if (algunaSinSalida) salidaState = 'sinSalida'
+  else if (algunaSinEntrada) salidaState = 'sinEntrada'
+  else if (clockOut) {
+    const diff = minutosDiff(ultimaSeg.endTime, clockOut)
+    if (diff != null) {
+      minSalidaDiff = diff
+      if (diff > EXTRA_UMBRAL) salidaState = 'extras'
+      else if (diff < -SALIDA_TOLERANCE) salidaState = 'temprano'
+      else salidaState = 'aTiempo'
+    }
+  }
+
+  // Registro incompleto: alguna sesión con solo ingreso o solo salida.
+  const registroIncompleto = sesiones.some(s => (!!s.clockIn) !== (!!s.clockOut))
+
+  let state = 'good'
+  if (minsTotal > 0) state = maxMin < 15 ? 'warn' : 'bad'
+
+  let motivoColor = 'aTiempo'
+  if (salidaState === 'sinEntrada') motivoColor = 'sinSalida'
+  else if (minsTotal > 0) motivoColor = 'tardeEntrada'
+  else if (salidaState === 'sinSalida') motivoColor = 'sinSalida'
+  else if (salidaState === 'temprano') motivoColor = 'salidaTemprana'
+  else if (salidaState === 'extras') motivoColor = 'extras'
+
+  const horasPagables = (registroIncompleto || horas > 16) ? horasProgramadas : horas
+  const minExtraComputado = (minSalidaDiff != null && minSalidaDiff > 30 && minSalidaDiff < 600)
+    ? minSalidaDiff - 30 : 0
+  const anomalia = !!(registroIncompleto || horas > 16 || maxMin > 180)
+
+  return {
+    state, day, dayStr,
+    fichaje: clockOut ? { ...primera, clockOut } : primera,
+    horas, mins: minsTotal, multaDia,
+    programadoStart: segments[0].startTime,
+    programadoEnd: ultimaSeg.endTime,
+    segments,
+    salidaState, minSalidaDiff, minExtraComputado,
+    horasProgramadas, horasPagables, registroIncompleto, anomalia,
+    motivoColor, turnoCustom, esPartido: true,
+  }
+}
+
 // Helper interno: resuelve estado, mins tarde, horas y turno para un día.
 // Prioridad: turno custom de la semana > default por día del empleado > schedule legacy.
 function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, personOverrides = {}, weekKeyOverride }) {
   const dayStr = format(day, 'yyyy-MM-dd')
-  const fich = fichajesEmp.find(a => a.date === dayStr)
+  const fichajesDelDia = fichajesEmp.filter(a => a.date === dayStr)
+  const fich = fichajesDelDia[0]
   const dow = day.getDay() === 0 ? 7 : day.getDay()
   const wk = weekKeyOverride || isoWeekKey(day)
 
   const celdaTurno = normalizarCelda(turnos?.[wk]?.[emp.id]?.[String(dow)])
   let startTimeProgramado = null
   let endTimeProgramado = null
+  let segmentsProgramado = null
   let programado = false
   let turnoCustom = false
 
@@ -148,6 +258,7 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
   } else if (celdaTurno?.startTime) {
     startTimeProgramado = celdaTurno.startTime
     endTimeProgramado = celdaTurno.endTime
+    segmentsProgramado = celdaTurno.segments || null
     programado = true
     turnoCustom = true
   } else {
@@ -158,6 +269,7 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
     } else if (def?.startTime) {
       startTimeProgramado = def.startTime
       endTimeProgramado = def.endTime
+      segmentsProgramado = def.segments || null
       programado = true
     }
   }
@@ -183,6 +295,12 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
     motivoColor: 'falta',
     programadoStart: startTimeProgramado,
     programadoEnd: endTimeProgramado,
+  }
+
+  // TURNO PARTIDO: el día tiene ≥2 tramos. Se evalúa cada tramo por separado
+  // (tardanza por tramo) y las horas/salida se calculan sobre todas las sesiones.
+  if (segmentsProgramado && segmentsProgramado.length >= 2) {
+    return resolverDiaPartido({ segments: segmentsProgramado, fichajesDelDia, condonaciones, turnoCustom, day, dayStr })
   }
 
   // ENTRADA
@@ -346,7 +464,8 @@ export function extrasYRetrasoDeCells(cells) {
     horasPagables += c.horasPagables || 0
     if (c.registroIncompleto) { diasNoRegistro++; descuentoNoRegistro += MULTA_NO_REGISTRO }
     // Tardanza real (1–180 min): se acumula aunque el día sea incompleto. >180 = horario mal config.
-    if (c.mins > 0 && c.mins <= 180) { minTarde += c.mins; multaBs += calcularMulta(c.mins) }
+    // En turnos partidos la multa viene precalculada por tramo (multaDia, escalonada por tramo).
+    if (c.mins > 0 && c.mins <= 180) { minTarde += c.mins; multaBs += (c.multaDia != null ? c.multaDia : calcularMulta(c.mins)) }
     // Extra solo en días no anómalos (no incompletos)
     if (!c.anomalia) minExtra += c.minExtraComputado || 0
     if (c.anomalia) anomalias++

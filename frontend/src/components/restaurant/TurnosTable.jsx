@@ -5,9 +5,12 @@ import { toast } from 'sonner'
 import { Avatar } from '../ui/Avatar'
 import {
   isoWeekKey, semanaAnteriorKey, DIAS_LABEL,
-  getDefaultParaDia, normalizarCelda, esExcepcion, tipoExcepcion, contarCambios,
+  getDefaultParaDia, normalizarCelda, esExcepcion, tipoExcepcion, contarCambios, turnoToText,
 } from '../../utils/turnos'
 import { descargarTemplateTurnos, parseExcelTurnosAuto } from '../../utils/excel-turnos'
+
+// Texto de una celda para la lista de cambios: "08:00-16:00" o "09:00-16:00 + 18:00-23:00".
+const celdaTexto = (celda) => turnoToText(celda)
 
 // Sentinel para borrar una celda (volver al default) en el buffer.
 const DELETE = '__DELETE__'
@@ -333,11 +336,11 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
                     <span className="text-xs">
                       <span className="text-ink-400 line-through">{c.defaultDia.startTime}-{c.defaultDia.endTime}</span>
                       {' → '}
-                      <span className="text-accent font-mono">{c.celda.startTime}-{c.celda.endTime}</span>
+                      <span className="text-accent font-mono">{celdaTexto(c.celda)}</span>
                     </span>
                   )}
                   {c.tipo === 'cambio-off' && <span className="text-xs"><span className="text-ink-400 line-through">{c.defaultDia.startTime}-{c.defaultDia.endTime}</span> → <span className="text-bad">OFF</span></span>}
-                  {c.tipo === 'cubre' && <span className="text-xs"><span className="text-ink-400 line-through">OFF</span> → <span className="text-good font-mono">{c.celda.startTime}-{c.celda.endTime}</span> (cubre)</span>}
+                  {c.tipo === 'cubre' && <span className="text-xs"><span className="text-ink-400 line-through">OFF</span> → <span className="text-good font-mono">{celdaTexto(c.celda)}</span> (cubre)</span>}
                   {c.nota && <span className="text-xs italic text-accent-400 ml-1">"{c.nota}"</span>}
                 </li>
               ))}
@@ -479,9 +482,12 @@ function TurnoCell({ valor, valorOriginal, tienePending, defaultDia, onChange, o
   // Construye tooltip con contexto del cambio
   const tooltip = useMemo(() => {
     const parts = []
-    if (tipo === 'cambio-horario' && defaultDia) parts.push(`Default: ${defaultDia.startTime}-${defaultDia.endTime} → ${norm?.startTime}-${norm?.endTime}`)
+    const txtTurno = norm?.segments
+      ? norm.segments.map(s => `${s.startTime}-${s.endTime}`).join(' + ')
+      : `${norm?.startTime}-${norm?.endTime}`
+    if (tipo === 'cambio-horario' && defaultDia) parts.push(`Default: ${defaultDia.startTime}-${defaultDia.endTime} → ${txtTurno}`)
     else if (tipo === 'cambio-off' && defaultDia) parts.push(`Default: ${defaultDia.startTime}-${defaultDia.endTime} → OFF`)
-    else if (tipo === 'cubre') parts.push(`Default: OFF → ${norm?.startTime}-${norm?.endTime} (cubre)`)
+    else if (tipo === 'cubre') parts.push(`Default: OFF → ${txtTurno} (cubre)`)
     if (tienePending) parts.push('Sin guardar')
     if (norm?.nota) parts.push(`Nota: ${norm.nota}`)
     return parts.join(' · ')
@@ -557,6 +563,35 @@ function TurnoCell({ valor, valorOriginal, tienePending, defaultDia, onChange, o
             <span className="text-xs text-ink-500">+ asignar</span>
           )}
         </button>
+        {isEditingNota && <NotaPopover nota={norm?.nota} onClose={onCerrarNota} onSave={onGuardarNota} />}
+      </div>
+    )
+  }
+
+  // CASO P: turno PARTIDO (≥2 tramos). Solo display — se crea/edita por Excel.
+  if (norm?.segments) {
+    return (
+      <div
+        className="relative group rounded-md min-h-[64px] border border-white/5"
+        style={baseStyle}
+        title={tooltip || 'Turno partido'}
+      >
+        {dotsCorner}
+        <NotaButton tieneNota={tieneNota} onClick={onAbrirNota} />
+        <div className="p-1 space-y-0.5">
+          <span className="block text-[9px] font-semibold uppercase tracking-wide text-accent-400 text-center">partido</span>
+          {norm.segments.map((s, i) => (
+            <div key={i} className="text-[11px] font-mono text-ink-100 text-center bg-bg-700/60 rounded px-1 py-0.5">
+              {s.startTime}-{s.endTime}
+            </div>
+          ))}
+          <button
+            onClick={toggleOff}
+            className="w-full px-1 py-0.5 rounded text-[10px] text-ink-400 hover:text-ink-200 hover:bg-bg-700 transition"
+          >
+            OFF
+          </button>
+        </div>
         {isEditingNota && <NotaPopover nota={norm?.nota} onClose={onCerrarNota} onSave={onGuardarNota} />}
       </div>
     )

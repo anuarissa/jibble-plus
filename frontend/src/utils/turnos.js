@@ -46,16 +46,25 @@ export function semanaAnteriorKey(weekKey) {
 }
 
 // Normaliza el shape de una celda. Devuelve uno de:
-//   { startTime, endTime, nota? }    → trabajo explícito
+//   { startTime, endTime, nota? }               → trabajo explícito (un tramo)
+//   { startTime, endTime, segments:[...], nota? } → turno partido (≥2 tramos)
 //   { tipo: 'OFF', nota? }            → libre explícito
 //   { tipo: 'default', nota }         → sin valor explícito (usa default) pero con nota
 //   null                              → vacío total
+// En partidos: startTime/endTime = span del día (1er inicio, último fin) por
+// compatibilidad con el código que no conoce tramos; segments tiene el detalle.
 export function normalizarCelda(raw) {
   if (raw == null) return null
   if (raw === 'OFF') return { tipo: 'OFF' }
   if (typeof raw === 'object') {
     if (raw.tipo === 'OFF') return { tipo: 'OFF', ...(raw.nota ? { nota: raw.nota } : {}) }
     if (raw.tipo === 'default') return raw.nota ? { tipo: 'default', nota: raw.nota } : null
+    const segs = normalizarSegments(raw.segments)
+    if (segs && segs.length >= 2) {
+      const out = { startTime: segs[0].startTime, endTime: segs[segs.length - 1].endTime, segments: segs }
+      if (raw.nota) out.nota = raw.nota
+      return out
+    }
     if (raw.startTime && raw.endTime) {
       const out = { startTime: raw.startTime, endTime: raw.endTime }
       if (raw.nota) out.nota = raw.nota
@@ -63,6 +72,16 @@ export function normalizarCelda(raw) {
     }
   }
   return null
+}
+
+// Valida y limpia un array de tramos. Devuelve [{startTime,endTime}, ...] o null.
+function normalizarSegments(segs) {
+  if (!Array.isArray(segs)) return null
+  const out = []
+  for (const s of segs) {
+    if (s && s.startTime && s.endTime) out.push({ startTime: s.startTime, endTime: s.endTime })
+  }
+  return out.length ? out : null
 }
 
 // Default por día del empleado.
@@ -102,7 +121,8 @@ export function esExcepcion(celdaExplicita, defaultParaDia) {
   if (!d) return c.tipo !== 'OFF' // celda OFF sin default → no es cambio
   if (c.tipo === 'OFF' && d.tipo === 'OFF') return false
   if (c.tipo === 'OFF' || d.tipo === 'OFF') return true
-  return c.startTime !== d.startTime || c.endTime !== d.endTime
+  // Comparar por texto cubre turnos simples y partidos (segments).
+  return turnoToText(c) !== turnoToText(d)
 }
 
 // Tipo de cambio para mostrar badge: 'cambio-horario' | 'cambio-off' | 'cubre' | null
@@ -112,22 +132,23 @@ export function tipoExcepcion(celdaExplicita, defaultParaDia) {
   if (!c || c.tipo === 'default') return null
   if (c.tipo === 'OFF' && d && d.tipo !== 'OFF') return 'cambio-off'
   if (c.startTime && (!d || d.tipo === 'OFF')) return 'cubre'
-  if (c.startTime && d?.startTime && (c.startTime !== d.startTime || c.endTime !== d.endTime)) return 'cambio-horario'
+  if (c.startTime && d?.startTime && turnoToText(c) !== turnoToText(d)) return 'cambio-horario'
   return null
 }
 
 // Resuelve el turno efectivo para (semana, persona, día) considerando default.
-// Devuelve { startTime, endTime, fuente: 'turno'|'default' } | null.
+// Devuelve { startTime, endTime, segments?, fuente: 'turno'|'default' } | null.
+// segments solo está presente en turnos partidos (≥2 tramos).
 export function getTurnoEfectivo(turnos, weekKey, personId, dow, schedule, personOverrides = {}) {
   const celda = normalizarCelda(turnos?.[weekKey]?.[personId]?.[String(dow)])
   if (celda?.tipo === 'OFF') return null
   if (celda?.startTime) {
-    return { startTime: celda.startTime, endTime: celda.endTime, fuente: 'turno' }
+    return { startTime: celda.startTime, endTime: celda.endTime, ...(celda.segments ? { segments: celda.segments } : {}), fuente: 'turno' }
   }
   // celda con tipo:'default' o null → usar default
   const def = getDefaultParaDia(personId, dow, personOverrides, schedule)
   if (def?.tipo === 'OFF') return null
-  if (def?.startTime) return { startTime: def.startTime, endTime: def.endTime, fuente: 'default' }
+  if (def?.startTime) return { startTime: def.startTime, endTime: def.endTime, ...(def.segments ? { segments: def.segments } : {}), fuente: 'default' }
   return null
 }
 
@@ -169,32 +190,54 @@ export function contarCambios(semanaTurnos, empleados, schedules, personOverride
 }
 
 // Convierte celda almacenada a string para mostrar/exportar.
-// "08:00-16:00" | "OFF" | ""
+// "08:00-16:00" | "09:00-16:00 + 18:00-23:00" (partido) | "OFF" | ""
 export function turnoToText(celda) {
   const c = normalizarCelda(celda)
   if (!c) return ''
   if (c.tipo === 'OFF') return 'OFF'
+  if (c.segments) return c.segments.map(s => `${s.startTime}-${s.endTime}`).join(' + ')
   if (c.startTime && c.endTime) return `${c.startTime}-${c.endTime}`
   return ''
 }
 
-// Parser inverso: "08:00-16:00" → { startTime, endTime } | "OFF" | null si vacío | error con throw
+// Parsea un rango "HH:MM-HH:MM" (acepta 8-16, 08:00-16:00) → { startTime, endTime, startMin, endMin }
+// Lanza error si el formato no se reconoce o la salida no es posterior a la entrada.
+function parseRango(s) {
+  const m = s.match(/^(\d{1,2})(?::(\d{2}))?-(\d{1,2})(?::(\d{2}))?$/)
+  if (!m) throw new Error(`Formato no reconocido: "${s}"`)
+  const [, h1, m1 = '00', h2, m2 = '00'] = m
+  const startTime = `${String(h1).padStart(2,'0')}:${m1}`
+  const endTime = `${String(h2).padStart(2,'0')}:${m2}`
+  const startMin = parseInt(h1) * 60 + parseInt(m1)
+  const endMin = parseInt(h2) * 60 + parseInt(m2)
+  if (endMin <= startMin) throw new Error(`Salida (${endTime}) debe ser después que entrada (${startTime})`)
+  return { startTime, endTime, startMin, endMin }
+}
+
+// Parser inverso. Devuelve:
+//   { startTime, endTime }                          → un solo tramo
+//   { startTime, endTime, segments:[...] }          → turno partido ("R1 + R2")
+//   "OFF" | null (si vacío) | error con throw
 export function textToTurno(raw) {
   if (raw == null) return null
   const s = String(raw).trim().toUpperCase().replace(/\s+/g, '')
   if (!s) return null
   if (s === 'OFF' || s === 'LIBRE' || s === '-') return 'OFF'
-  // Formatos aceptados: 08:00-16:00, 8:00-16:00, 08-16, 8-16
-  const m = s.match(/^(\d{1,2})(?::(\d{2}))?-(\d{1,2})(?::(\d{2}))?$/)
-  if (!m) throw new Error(`Formato no reconocido: "${raw}"`)
-  const [, h1, m1 = '00', h2, m2 = '00'] = m
-  const startTime = `${String(h1).padStart(2,'0')}:${m1}`
-  const endTime = `${String(h2).padStart(2,'0')}:${m2}`
-  // Validar
-  const startMin = parseInt(h1) * 60 + parseInt(m1)
-  const endMin = parseInt(h2) * 60 + parseInt(m2)
-  if (endMin <= startMin) throw new Error(`Salida (${endTime}) debe ser después que entrada (${startTime})`)
-  return { startTime, endTime }
+  // Turno partido: varios rangos separados por "+" (ej "09:00-16:00+18:00-23:00")
+  const partes = s.split('+').filter(Boolean)
+  if (partes.length === 1) {
+    const r = parseRango(partes[0])
+    return { startTime: r.startTime, endTime: r.endTime }
+  }
+  const rangos = partes.map(parseRango).sort((a, b) => a.startMin - b.startMin)
+  // Validar que no se solapen
+  for (let i = 1; i < rangos.length; i++) {
+    if (rangos[i].startMin < rangos[i - 1].endMin) {
+      throw new Error(`Los tramos se solapan: "${raw}"`)
+    }
+  }
+  const segments = rangos.map(r => ({ startTime: r.startTime, endTime: r.endTime }))
+  return { startTime: segments[0].startTime, endTime: segments[segments.length - 1].endTime, segments }
 }
 
 // Días de la semana en español (orden Lun..Dom)

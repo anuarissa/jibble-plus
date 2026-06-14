@@ -20,7 +20,7 @@ export function descargarTemplateTurnos({ empleados, weekKey, nombreLocal }) {
   // === HOJA 1: TURNOS ===
   const turnos = [
     ['Empleado', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
-    ['(EJEMPLO) Borra esta fila', '09:00-16:00', '09:00-16:00', 'OFF', '09:00-16:00', '09:00-16:00', '16:00-23:00', 'OFF'],
+    ['(EJEMPLO) Borra esta fila', '09:00-16:00', '09:00-16:00', 'OFF', '09:00-16:00', '09:00-16:00 + 18:00-23:00', '16:00-23:00', 'OFF'],
     [],
   ]
   if (empleados.length === 0) {
@@ -34,6 +34,7 @@ export function descargarTemplateTurnos({ empleados, weekKey, nombreLocal }) {
   turnos.push(['(*) FORMATO ACEPTADO POR CELDA:'])
   turnos.push(['(*)   "09:00-16:00"   →  Entrada 9 AM, salida 4 PM'])
   turnos.push(['(*)   "16:00-23:00"   →  Entrada 4 PM, salida 11 PM'])
+  turnos.push(['(*)   "09:00-16:00 + 18:00-23:00" →  Turno PARTIDO (mañana y tarde, con corte)'])
   turnos.push(['(*)   "OFF" o "LIBRE" →  Día libre'])
   turnos.push(['(*)   (celda vacía)   →  Mantiene el horario por defecto del empleado'])
   turnos.push([])
@@ -79,6 +80,9 @@ export function descargarTemplateTurnos({ empleados, weekKey, nombreLocal }) {
     ['  09:00-16:00       Horario normal (entrada-salida)'],
     ['  08:30-12:00       Cualquier rango con minutos'],
     ['  16:00-23:00       Turno de tarde / noche'],
+    ['  09:00-16:00 + 18:00-23:00   Turno PARTIDO: dos tramos en el día separados por " + "'],
+    ['                    (ej. trabaja mañana, corta unas horas y vuelve a la tarde/noche).'],
+    ['                    La tardanza se mide en CADA tramo por separado.'],
     ['  OFF               Día libre'],
     ['  LIBRE             Día libre (alternativa)'],
     ['  (vacío)           No tocar — usa el horario por defecto del empleado'],
