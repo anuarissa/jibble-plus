@@ -56,16 +56,20 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
       const tardanzas = tardanzasConCondonacion(attendance, schedules, cfg.condonaciones, iniS, finS, cfg.turnos, cfg.personOverrides)
         .filter(t => t.groupId === group.id)
       const tardanzasPorPersona = groupByPerson(tardanzas)
-      // Horas extra POR DÍA (solo lo que pasa de 30 min tras la salida programada)
+      // Cálculos POR DÍA desde stats: extras (>30min), horas pagables, descuento no-registro
       const tabla = tablaSemanal({ empleados, attendance, schedules, ini: iniS,
         condonaciones: cfg.condonaciones, turnos: cfg.turnos, personOverrides: cfg.personOverrides })
-      const horasExtraPorPersona = {}
+      const horasExtraPorPersona = {}, horasPagablesPorPersona = {}, descuentoNoRegistroPorPersona = {}, diasNoRegistroPorPersona = {}
       for (const fila of tabla.filas) {
-        horasExtraPorPersona[fila.empleado.id] = extrasYRetrasoDeCells(fila.cells).horasExtra
+        const agg = extrasYRetrasoDeCells(fila.cells)
+        horasExtraPorPersona[fila.empleado.id] = agg.horasExtra
+        horasPagablesPorPersona[fila.empleado.id] = agg.horasPagables
+        descuentoNoRegistroPorPersona[fila.empleado.id] = agg.descuentoNoRegistro
+        diasNoRegistroPorPersona[fila.empleado.id] = agg.diasNoRegistro
       }
       return planillaLocal(empleadosConTarifa, fichajesPorPersona, tardanzasPorPersona, {
         multiplicadorExtra: cfg.config.settings.multiplicadorExtra,
-        horasExtraPorPersona,
+        horasExtraPorPersona, horasPagablesPorPersona, descuentoNoRegistroPorPersona, diasNoRegistroPorPersona,
       })
     }
 
@@ -87,7 +91,7 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
             personId: fila.personId, fullName: fila.fullName, position: fila.position, tarifa: fila.tarifa,
             horasTotales: 0, horasNormales: 0, horasExtra: 0,
             baseTarifa: 0, extraTarifa: 0, bruto: 0,
-            descuentoTardanza: 0, minutosTardeTotales: 0, totalAPagar: 0,
+            descuentoTardanza: 0, descuentoNoRegistro: 0, diasNoRegistro: 0, minutosTardeTotales: 0, totalAPagar: 0,
             cantidadTardanzas: 0, tardanzasCondonadas: 0,
           }
         }
@@ -99,6 +103,8 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
         a.extraTarifa += fila.extraTarifa
         a.bruto += fila.bruto
         a.descuentoTardanza += fila.descuentoTardanza
+        a.descuentoNoRegistro += fila.descuentoNoRegistro || 0
+        a.diasNoRegistro += fila.diasNoRegistro || 0
         a.minutosTardeTotales += fila.minutosTardeTotales || 0
         a.totalAPagar += fila.totalAPagar
         a.cantidadTardanzas += fila.cantidadTardanzas
@@ -117,6 +123,7 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
       extraTarifa: r2(a.extraTarifa),
       bruto: r2(a.bruto),
       descuentoTardanza: r2(a.descuentoTardanza),
+      descuentoNoRegistro: r2(a.descuentoNoRegistro),
       totalAPagar: r2(a.totalAPagar),
     }))
     const totales = filas.reduce((t, f) => ({
@@ -125,8 +132,9 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
       horasExtra: t.horasExtra + f.horasExtra,
       bruto: t.bruto + f.bruto,
       descuentoTardanza: t.descuentoTardanza + f.descuentoTardanza,
+      descuentoNoRegistro: t.descuentoNoRegistro + f.descuentoNoRegistro,
       totalAPagar: t.totalAPagar + f.totalAPagar,
-    }), { horasTotales: 0, horasNormales: 0, horasExtra: 0, bruto: 0, descuentoTardanza: 0, totalAPagar: 0 })
+    }), { horasTotales: 0, horasNormales: 0, horasExtra: 0, bruto: 0, descuentoTardanza: 0, descuentoNoRegistro: 0, totalAPagar: 0 })
     Object.keys(totales).forEach(k => totales[k] = r2(totales[k]))
     return { filas, totales }
   }, [empleados, attendance, schedules, cfg.tarifas, cfg.personOverrides, cfg.condonaciones, cfg.turnos, ini, fin, modo, group.id, cfg.config.settings.multiplicadorExtra])
@@ -142,6 +150,8 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
     { label: 'Min tarde', accessor: r => r.minutosTardeTotales || 0, width: 10, numFmt: '0' },
     { label: 'Tarifa multa', accessor: () => '10 Bs hasta 10 min · +20 Bs cada 10 min adicional', width: 44 },
     { label: 'Descuento tardanza (Bs)', accessor: 'descuentoTardanza', width: 18, numFmt: '"Bs" #,##0.00' },
+    { label: 'Días no-registro', accessor: r => r.diasNoRegistro || 0, width: 14, numFmt: '0' },
+    { label: 'Descuento no-registro (Bs)', accessor: r => r.descuentoNoRegistro || 0, width: 20, numFmt: '"Bs" #,##0.00' },
     { label: 'Total a pagar (Bs)', accessor: 'totalAPagar', width: 16, numFmt: '"Bs" #,##0.00' },
   ]
   const fileBase = `planilla_${(cfg.config.locales[group.id]?.name || group.name || 'local').replace(/[^a-z0-9]+/gi, '_')}_${fileLabel}`
@@ -191,7 +201,8 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
               <th className="text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium text-right">H. normales</th>
               <th className="text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium text-right">H. extra</th>
               <th className="text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium text-right">Bruto</th>
-              <th className="text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium text-right">Descuento</th>
+              <th className="text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium text-right">Desc. tardanza</th>
+              <th className="text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium text-right">Desc. no-registro</th>
               <th className="text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium text-right">Total</th>
             </tr>
           </thead>
@@ -225,6 +236,11 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
                 <td className="text-right py-3 font-display">
                   {fila.descuentoTardanza > 0 ? <span className="text-bad">−{formatBs(fila.descuentoTardanza)}</span> : <span className="text-ink-400">—</span>}
                 </td>
+                <td className="text-right py-3 font-display">
+                  {fila.descuentoNoRegistro > 0
+                    ? <span className="text-bad" title={`${fila.diasNoRegistro} día(s) sin registrar ingreso o salida`}>−{formatBs(fila.descuentoNoRegistro)}</span>
+                    : <span className="text-ink-400">—</span>}
+                </td>
                 <td className="text-right py-3 font-display font-bold text-ink-50">{formatBs(fila.totalAPagar)}</td>
               </tr>
             ))}
@@ -238,6 +254,7 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
               <td className="text-right py-3 font-mono text-accent-400">{formatHoras(planilla.totales.horasExtra)}</td>
               <td className="text-right py-3 font-display">{formatBs(planilla.totales.bruto)}</td>
               <td className="text-right py-3 font-display text-bad">{planilla.totales.descuentoTardanza > 0 ? `−${formatBs(planilla.totales.descuentoTardanza)}` : '—'}</td>
+              <td className="text-right py-3 font-display text-bad">{planilla.totales.descuentoNoRegistro > 0 ? `−${formatBs(planilla.totales.descuentoNoRegistro)}` : '—'}</td>
               <td className="text-right py-3 font-display font-bold text-accent text-lg">{formatBs(planilla.totales.totalAPagar)}</td>
             </tr>
           </tfoot>

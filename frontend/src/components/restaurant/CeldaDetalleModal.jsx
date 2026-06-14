@@ -14,7 +14,7 @@ export function CeldaDetalleModal({ celda, empleado, cfg, onClose }) {
 
   const {
     dayStr, fichaje, falto, programadoStart, programadoEnd,
-    mins, salidaState, minSalidaDiff, horas, motivoColor,
+    mins, salidaState, minSalidaDiff, horas, motivoColor, registroIncompleto,
   } = celda
 
   const condonacionExistente = fichaje && cfg.condonaciones?.[fichaje.id]
@@ -107,9 +107,22 @@ export function CeldaDetalleModal({ celda, empleado, cfg, onClose }) {
                   <span className={yaCondonada ? 'line-through text-ink-400' : 'text-bad font-display'}>−{formatBs(multa)}</span>
                 </div>
               )}
+              {registroIncompleto && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-bad flex items-center gap-1.5">
+                    ⚠ {salidaState === 'sinSalida' ? 'No marcó salida' : 'No marcó ingreso'}
+                  </span>
+                  <span className="text-bad font-display">−{formatBs(20)}</span>
+                </div>
+              )}
             </>
           )}
         </div>
+        {registroIncompleto && (
+          <div className="mb-4 -mt-1 text-xs text-bad/90 bg-bad/10 rounded-lg px-3 py-2">
+            Descuento de 20 Bs por registro incompleto. Las horas de este día se pagan según el horario programado.
+          </div>
+        )}
 
         {/* Acciones de condonación */}
         {!falto && puedeCondonar && (
@@ -176,10 +189,14 @@ export function MotivoBadge({ motivo, mins, salidaDiff, salidaState, grande = fa
     extras: { label: `+${salidaDiff || 0}min extras`, cls: 'bg-accent/15 text-accent-400' },
     sinSalida: { label: 'Sin salida (activo)', cls: 'bg-warn/15 text-warn' },
     falta: { label: 'No fichó', cls: 'bg-bad/15 text-bad' },
+    diaLibreTrabajado: { label: 'Vino en día libre', cls: '', style: { background: 'rgba(6,182,212,0.15)', color: '#22d3ee' } },
   }
   const item = map[motivo] || map.aTiempo
   return (
-    <span className={`inline-block ${grande ? 'px-3 py-1.5 text-sm' : 'px-2 py-0.5 text-xs'} rounded-full font-medium ${item.cls}`}>
+    <span
+      className={`inline-block ${grande ? 'px-3 py-1.5 text-sm' : 'px-2 py-0.5 text-xs'} rounded-full font-medium ${item.cls}`}
+      style={item.style}
+    >
       {item.label}
     </span>
   )

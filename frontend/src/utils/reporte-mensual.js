@@ -43,23 +43,27 @@ export function descargarReporteMensual({
       const d = new Date(t.date + 'T00:00:00')
       return d >= semanaIni && d <= semanaFin
     })
-    // Horas extra POR DÍA de esa semana (solo lo que pasa de 30 min tras la salida)
+    // Cálculos POR DÍA de esa semana: extras (>30min), horas pagables, descuento no-registro
     const tablaSem = tablaSemanal({ empleados, attendance, schedules, ini: semanaIni,
       condonaciones, turnos, personOverrides })
-    const horasExtraPorPersona = {}
+    const horasExtraPorPersona = {}, horasPagablesPorPersona = {}, descuentoNoRegistroPorPersona = {}, diasNoRegistroPorPersona = {}
     for (const fila of tablaSem.filas) {
-      horasExtraPorPersona[fila.empleado.id] = extrasYRetrasoDeCells(fila.cells).horasExtra
+      const agg = extrasYRetrasoDeCells(fila.cells)
+      horasExtraPorPersona[fila.empleado.id] = agg.horasExtra
+      horasPagablesPorPersona[fila.empleado.id] = agg.horasPagables
+      descuentoNoRegistroPorPersona[fila.empleado.id] = agg.descuentoNoRegistro
+      diasNoRegistroPorPersona[fila.empleado.id] = agg.diasNoRegistro
     }
     const planSem = planillaLocal(empleadosConTarifa, groupByPerson(fichajesSem), groupByPerson(tardanzasSem), {
       multiplicadorExtra: cfg.config.settings.multiplicadorExtra,
-      horasExtraPorPersona,
+      horasExtraPorPersona, horasPagablesPorPersona, descuentoNoRegistroPorPersona, diasNoRegistroPorPersona,
     })
     for (const fila of planSem.filas) {
       if (!acc[fila.personId]) {
         acc[fila.personId] = {
           personId: fila.personId, fullName: fila.fullName, position: fila.position, tarifa: fila.tarifa,
           horasTotales: 0, horasNormales: 0, horasExtra: 0,
-          bruto: 0, descuentoTardanza: 0, minutosTardeTotales: 0, totalAPagar: 0,
+          bruto: 0, descuentoTardanza: 0, descuentoNoRegistro: 0, diasNoRegistro: 0, minutosTardeTotales: 0, totalAPagar: 0,
         }
       }
       const a = acc[fila.personId]
@@ -68,6 +72,8 @@ export function descargarReporteMensual({
       a.horasExtra += fila.horasExtra
       a.bruto += fila.bruto
       a.descuentoTardanza += fila.descuentoTardanza
+      a.descuentoNoRegistro += fila.descuentoNoRegistro || 0
+      a.diasNoRegistro += fila.diasNoRegistro || 0
       a.minutosTardeTotales += fila.minutosTardeTotales || 0
       a.totalAPagar += fila.totalAPagar
     }
@@ -81,6 +87,7 @@ export function descargarReporteMensual({
     horasExtra: r2(f.horasExtra),
     bruto: r2(f.bruto),
     descuentoTardanza: r2(f.descuentoTardanza),
+    descuentoNoRegistro: r2(f.descuentoNoRegistro),
     totalAPagar: r2(f.totalAPagar),
   }))
   const planillaTotales = planillaFilas.reduce((t, f) => ({
@@ -89,8 +96,9 @@ export function descargarReporteMensual({
     horasExtra: t.horasExtra + f.horasExtra,
     bruto: t.bruto + f.bruto,
     descuentoTardanza: t.descuentoTardanza + f.descuentoTardanza,
+    descuentoNoRegistro: t.descuentoNoRegistro + f.descuentoNoRegistro,
     totalAPagar: t.totalAPagar + f.totalAPagar,
-  }), { horasTotales: 0, horasNormales: 0, horasExtra: 0, bruto: 0, descuentoTardanza: 0, totalAPagar: 0 })
+  }), { horasTotales: 0, horasNormales: 0, horasExtra: 0, bruto: 0, descuentoTardanza: 0, descuentoNoRegistro: 0, totalAPagar: 0 })
   Object.keys(planillaTotales).forEach(k => planillaTotales[k] = r2(planillaTotales[k]))
 
   // === MÉTRICAS GLOBALES ===
@@ -221,6 +229,8 @@ export function descargarReporteMensual({
     'Min tarde': f.minutosTardeTotales || 0,
     'Tarifa multa': TARIFA_MULTA_LABEL,
     'Descuento tardanza (Bs)': f.descuentoTardanza,
+    'Días no-registro': f.diasNoRegistro || 0,
+    'Descuento no-registro (Bs)': f.descuentoNoRegistro || 0,
     'Total a pagar (Bs)': f.totalAPagar,
   }))
   planillaSheetRows.push({
@@ -234,6 +244,8 @@ export function descargarReporteMensual({
     'Min tarde': totalMinTarde,
     'Tarifa multa': '',
     'Descuento tardanza (Bs)': planillaTotales.descuentoTardanza,
+    'Días no-registro': '',
+    'Descuento no-registro (Bs)': planillaTotales.descuentoNoRegistro,
     'Total a pagar (Bs)': planillaTotales.totalAPagar,
   })
 
@@ -304,6 +316,8 @@ export function descargarReporteMensual({
         { label: 'Min tarde', accessor: 'Min tarde', width: 10, numFmt: '0' },
         { label: 'Tarifa multa', accessor: 'Tarifa multa', width: 44 },
         { label: 'Descuento tardanza (Bs)', accessor: 'Descuento tardanza (Bs)', width: 18, numFmt: '"Bs" #,##0.00' },
+        { label: 'Días no-registro', accessor: 'Días no-registro', width: 14, numFmt: '0' },
+        { label: 'Descuento no-registro (Bs)', accessor: 'Descuento no-registro (Bs)', width: 20, numFmt: '"Bs" #,##0.00' },
         { label: 'Total a pagar (Bs)', accessor: 'Total a pagar (Bs)', width: 16, numFmt: '"Bs" #,##0.00' },
       ],
       rows: planillaSheetRows,

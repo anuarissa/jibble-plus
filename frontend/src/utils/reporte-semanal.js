@@ -36,14 +36,18 @@ export function descargarReporteSemanal({
       expectedHoursPerWeek: sched?.expectedHoursPerWeek ?? 0,
     }
   })
-  // Horas extra POR DÍA (solo lo que pasa de 30 min tras la salida programada)
-  const horasExtraPorPersona = {}
+  // Cálculos POR DÍA: extras (>30min), horas pagables, descuento no-registro
+  const horasExtraPorPersona = {}, horasPagablesPorPersona = {}, descuentoNoRegistroPorPersona = {}, diasNoRegistroPorPersona = {}
   for (const fila of semana.filas) {
-    horasExtraPorPersona[fila.empleado.id] = extrasYRetrasoDeCells(fila.cells).horasExtra
+    const agg = extrasYRetrasoDeCells(fila.cells)
+    horasExtraPorPersona[fila.empleado.id] = agg.horasExtra
+    horasPagablesPorPersona[fila.empleado.id] = agg.horasPagables
+    descuentoNoRegistroPorPersona[fila.empleado.id] = agg.descuentoNoRegistro
+    diasNoRegistroPorPersona[fila.empleado.id] = agg.diasNoRegistro
   }
   const planilla = planillaLocal(empleadosConTarifa, fichajesPorPersona, tardanzasPorPersona, {
     multiplicadorExtra: cfg.config.settings.multiplicadorExtra,
-    horasExtraPorPersona,
+    horasExtraPorPersona, horasPagablesPorPersona, descuentoNoRegistroPorPersona, diasNoRegistroPorPersona,
   })
 
   // === MÉTRICAS PARA RESUMEN ===

@@ -59,7 +59,8 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
       const agg = extrasYRetrasoDeCells(fila.cells)
       return { empleado: fila.empleado, fichados, faltas: fila.faltas, aTiempo,
         tardanzas: tardanzasEmp, extras, totalHoras: fila.totalHoras, pct,
-        minTarde: agg.minTarde, multaBs: agg.multaBs, anomalias: agg.anomalias }
+        minTarde: agg.minTarde, multaBs: agg.multaBs, anomalias: agg.anomalias,
+        diasNoRegistro: agg.diasNoRegistro, descuentoNoRegistro: agg.descuentoNoRegistro }
     }).sort((a, b) => b.pct - a.pct)
 
     // Planilla mensual (iteramos semanas)
@@ -78,26 +79,33 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
       })
       const tablaSem = tablaSemanal({ empleados, attendance, schedules, ini: new Date(semanaIni),
         condonaciones: cfg.condonaciones, turnos: cfg.turnos, personOverrides: cfg.personOverrides })
-      const horasExtraPorPersona = {}
+      const horasExtraPorPersona = {}, horasPagablesPorPersona = {}, descuentoNoRegistroPorPersona = {}, diasNoRegistroPorPersona = {}
       for (const fila of tablaSem.filas) {
-        horasExtraPorPersona[fila.empleado.id] = extrasYRetrasoDeCells(fila.cells).horasExtra
+        const agg = extrasYRetrasoDeCells(fila.cells)
+        horasExtraPorPersona[fila.empleado.id] = agg.horasExtra
+        horasPagablesPorPersona[fila.empleado.id] = agg.horasPagables
+        descuentoNoRegistroPorPersona[fila.empleado.id] = agg.descuentoNoRegistro
+        diasNoRegistroPorPersona[fila.empleado.id] = agg.diasNoRegistro
       }
       const ps = planillaLocal(empleadosConTarifa, groupByPerson(fichSem), groupByPerson(tardSem),
-        { multiplicadorExtra: cfg.config.settings.multiplicadorExtra, horasExtraPorPersona })
+        { multiplicadorExtra: cfg.config.settings.multiplicadorExtra,
+          horasExtraPorPersona, horasPagablesPorPersona, descuentoNoRegistroPorPersona, diasNoRegistroPorPersona })
       for (const f of ps.filas) {
-        if (!acc[f.personId]) acc[f.personId] = { totalAPagar: 0, bruto: 0, descuentoTardanza: 0 }
+        if (!acc[f.personId]) acc[f.personId] = { totalAPagar: 0, bruto: 0, descuentoTardanza: 0, descuentoNoRegistro: 0 }
         acc[f.personId].totalAPagar += f.totalAPagar
         acc[f.personId].bruto += f.bruto
         acc[f.personId].descuentoTardanza += f.descuentoTardanza
+        acc[f.personId].descuentoNoRegistro += f.descuentoNoRegistro || 0
       }
       semanaIni.setDate(semanaIni.getDate() + 7)
     }
     const totalAPagarMes = Object.values(acc).reduce((s, x) => s + x.totalAPagar, 0)
     const totalDescuentoMes = Object.values(acc).reduce((s, x) => s + x.descuentoTardanza, 0)
+    const totalNoRegistroMes = Object.values(acc).reduce((s, x) => s + x.descuentoNoRegistro, 0)
 
     return { data, tardanzas, totalFichados, totalFaltas, totalATiempo, totalDiasLibres,
              totalHoras, tardanzasActivas, totalMinTarde, pctPuntualidad, ranking,
-             totalAPagarMes, totalDescuentoMes }
+             totalAPagarMes, totalDescuentoMes, totalNoRegistroMes }
   }, [empleados, attendance, schedules, mes, ini, fin, cfg, group])
 
   function handleImprimir() { window.print() }
@@ -161,7 +169,10 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
                 tone={datos.tardanzasActivas.length === 0 ? 'good' : 'warn'} />
               <KpiCard icon={DollarSign} label="Total a pagar"
                 value={formatBs(datos.totalAPagarMes)}
-                sub={datos.totalDescuentoMes > 0 ? `−${formatBs(datos.totalDescuentoMes)} descuento` : null}
+                sub={[
+                  datos.totalDescuentoMes > 0 ? `−${formatBs(datos.totalDescuentoMes)} tardanza` : null,
+                  datos.totalNoRegistroMes > 0 ? `−${formatBs(datos.totalNoRegistroMes)} no-registro` : null,
+                ].filter(Boolean).join(' · ') || null}
                 tone="accent" />
             </div>
 
@@ -201,8 +212,13 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
                             <div className="flex items-center gap-2.5">
                               <Avatar name={r.empleado.fullName} id={r.empleado.id} size="sm" />
                               <span className="font-semibold text-ink-50">{r.empleado.fullName}</span>
+                              {r.diasNoRegistro > 0 && (
+                                <span className="badge bg-bad/15 text-bad print-bad text-[10px]" title={`${r.diasNoRegistro} día(s) sin registrar ingreso o salida · −${formatBs(r.descuentoNoRegistro)}`}>
+                                  {r.diasNoRegistro} sin registro
+                                </span>
+                              )}
                               {r.anomalias > 0 && (
-                                <span className="badge bg-bad/15 text-bad print-bad text-[10px]" title="Tiene días con datos raros para revisar">
+                                <span className="badge bg-warn/15 text-warn print-warn text-[10px]" title="Tiene días con datos raros para revisar">
                                   <AlertTriangle size={10} /> {r.anomalias} revisar
                                 </span>
                               )}

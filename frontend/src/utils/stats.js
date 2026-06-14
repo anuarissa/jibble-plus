@@ -194,16 +194,21 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
     if (condonaciones?.[fich.id]?.condonada) state = 'good'
   }
 
+  const tieneEntrada = !!fich.clockIn
+  const tieneSalida = !!fich.clockOut
+
   // SALIDA: comparar clockOut vs endTimeProgramado
   // Tolerancia: ±5 min "a tiempo". EXTRA solo si se quedó >30 min después
   // (regla del local: quedadas cortas no cuentan como hora extra).
   const SALIDA_TOLERANCE = 5
   const EXTRA_UMBRAL = 30
-  let salidaState = null     // 'aTiempo' | 'temprano' | 'extras' | 'sinSalida'
+  let salidaState = null     // 'aTiempo' | 'temprano' | 'extras' | 'sinSalida' | 'sinEntrada'
   let minSalidaDiff = null   // signo: + = se quedó después, - = se fue antes
-  if (!fich.clockOut && fich.clockIn) {
+  if (tieneEntrada && !tieneSalida) {
     salidaState = 'sinSalida'
-  } else if (fich.clockOut && endTimeProgramado) {
+  } else if (!tieneEntrada && tieneSalida) {
+    salidaState = 'sinEntrada'     // marcó solo salida (sin ingreso)
+  } else if (tieneSalida && endTimeProgramado) {
     const diff = minutosDiff(endTimeProgramado, fich.clockOut)
     if (diff != null) {
       minSalidaDiff = diff
@@ -214,28 +219,50 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
   }
 
   // motivoColor combinado: prioriza la "razón principal" para visualización rápida.
-  // Orden: falta > tardeEntrada > sinSalida > salidaTemprana > extras > aTiempo
   let motivoColor = 'aTiempo'
-  if (mins > 0) motivoColor = 'tardeEntrada'
+  if (salidaState === 'sinEntrada') motivoColor = 'sinSalida'  // registro incompleto (sin ingreso)
+  else if (mins > 0) motivoColor = 'tardeEntrada'
   else if (salidaState === 'sinSalida') motivoColor = 'sinSalida'
   else if (salidaState === 'temprano') motivoColor = 'salidaTemprana'
   else if (salidaState === 'extras') motivoColor = 'extras'
 
-  // Horas: si está fichando ahora (sin clockOut), calculamos hasta el momento actual
-  const outRef = fich.clockOut ? new Date(fich.clockOut) : new Date()
-  const horas = (outRef - new Date(fich.clockIn)) / 3600000
+  // Horas reales (si tiene ambos fichajes). Si falta uno, no son confiables.
+  let horas = 0
+  if (tieneEntrada && tieneSalida) {
+    horas = (new Date(fich.clockOut) - new Date(fich.clockIn)) / 3600000
+  } else if (tieneEntrada && !tieneSalida) {
+    // fichando ahora (sin cerrar): estimación hasta el momento actual (puede inflarse)
+    horas = (new Date() - new Date(fich.clockIn)) / 3600000
+  }
+
+  // Horas programadas del día (para pagar días con registro incompleto u horas absurdas).
+  let horasProgramadas = 0
+  if (startTimeProgramado && endTimeProgramado) {
+    const [sh, sm] = startTimeProgramado.split(':').map(Number)
+    const [eh, em] = endTimeProgramado.split(':').map(Number)
+    let mins2 = (eh * 60 + em) - (sh * 60 + sm)
+    if (mins2 < 0) mins2 += 24 * 60   // cruza medianoche
+    horasProgramadas = mins2 / 60
+  }
+
+  // Registro incompleto: marcó solo ingreso o solo salida → descuento fijo (no-registro).
+  const registroIncompleto = (tieneEntrada && !tieneSalida) || (!tieneEntrada && tieneSalida)
+
+  // Horas PAGABLES: en días incompletos u horas absurdas, se paga el horario programado.
+  let horasPagables
+  if (registroIncompleto || horas > 16) horasPagables = horasProgramadas
+  else horasPagables = horas
 
   // Minutos extra que SÍ cuentan: solo lo que pasa de 30 min tras la salida programada.
-  // Se descartan diffs absurdos (>=600 min = cruce de medianoche mal interpretado).
   const minExtraComputado = (minSalidaDiff != null && minSalidaDiff > 30 && minSalidaDiff < 600)
     ? minSalidaDiff - 30 : 0
 
   // Anomalía: dato sospechoso ACCIONABLE para revisar (no contamina totales).
-  // No incluye cierres post-medianoche de turnos PM (eso es normal, no un error).
+  // No incluye cierres post-medianoche de turnos PM (eso es normal).
   const anomalia = !!(
-    salidaState === 'sinSalida' ||                          // no marcó salida
-    (horas != null && horas > 16) ||                        // olvidó cerrar → horas absurdas
-    mins > 180                                              // entró 3h+ tarde = horario mal configurado
+    registroIncompleto ||           // marcó solo ingreso o solo salida
+    horas > 16 ||                   // olvidó cerrar → horas absurdas
+    mins > 180                      // entró 3h+ tarde = horario mal configurado
   )
 
   return {
@@ -245,6 +272,9 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
     salidaState,
     minSalidaDiff,
     minExtraComputado,
+    horasProgramadas,
+    horasPagables,
+    registroIncompleto,
     anomalia,
     motivoColor,
     turnoCustom,
@@ -297,20 +327,32 @@ export function tablaSemanal({ empleados, attendance, schedules, ini, condonacio
   return { dias, filas }
 }
 
-// Agrega los retrasos (tiempo + multa Bs) y extras (solo lo que pasa de 30 min/día)
-// de un conjunto de celdas resueltas. Base del cálculo monetario y de planilla.
-//   minTarde:   suma de minutos de retraso de entrada del período
-//   multaBs:    suma de multas (regla escalonada calcularMulta)
-//   horasExtra: suma de horas extra computadas (solo >30 min/día, descartando anomalías)
-//   anomalias:  cantidad de días con datos sospechosos a revisar
+export const MULTA_NO_REGISTRO = 20  // Bs por día con registro incompleto (falta ingreso o salida)
+
+// Agrega retrasos (tiempo + multa Bs), extras (solo lo que pasa de 30 min/día),
+// descuento por no-registro y horas pagables de un conjunto de celdas resueltas.
+// Base del cálculo monetario y de planilla.
+//   minTarde:            suma de minutos de retraso de entrada (1–180; >180 = horario mal config, se ignora)
+//   multaBs:             suma de multas por tardanza (regla escalonada). Se ACUMULA con el no-registro.
+//   horasExtra:          horas extra (solo >30 min/día, descartando días incompletos)
+//   diasNoRegistro:      cantidad de días con registro incompleto
+//   descuentoNoRegistro: 20 Bs × diasNoRegistro
+//   horasPagables:       horas que SÍ se pagan (días incompletos/absurdos → horario programado)
+//   anomalias:           cantidad de días con datos a revisar
 export function extrasYRetrasoDeCells(cells) {
   let minExtra = 0, minTarde = 0, multaBs = 0, anomalias = 0
+  let diasNoRegistro = 0, descuentoNoRegistro = 0, horasPagables = 0
   for (const c of (cells || [])) {
-    if (c.anomalia) { anomalias++; continue }  // días raros van a "revisar", no suman a totales
-    minExtra += c.minExtraComputado || 0
-    if (c.mins > 0) { minTarde += c.mins; multaBs += calcularMulta(c.mins) }
+    horasPagables += c.horasPagables || 0
+    if (c.registroIncompleto) { diasNoRegistro++; descuentoNoRegistro += MULTA_NO_REGISTRO }
+    // Tardanza real (1–180 min): se acumula aunque el día sea incompleto. >180 = horario mal config.
+    if (c.mins > 0 && c.mins <= 180) { minTarde += c.mins; multaBs += calcularMulta(c.mins) }
+    // Extra solo en días no anómalos (no incompletos)
+    if (!c.anomalia) minExtra += c.minExtraComputado || 0
+    if (c.anomalia) anomalias++
   }
-  return { horasExtra: minExtra / 60, minExtra, minTarde, multaBs, anomalias }
+  return { horasExtra: minExtra / 60, minExtra, minTarde, multaBs,
+           diasNoRegistro, descuentoNoRegistro, horasPagables, anomalias }
 }
 
 // Convierte una "celda" resuelta (de vistaDia/tablaSemanal) a una fila plana
