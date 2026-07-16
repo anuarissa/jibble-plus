@@ -42,7 +42,10 @@ export function getHandle(groupId) {
 }
 
 export async function conectarCarpeta(groupId) {
-  const handle = await window.showDirectoryPicker({ id: 'horarios-' + groupId, mode: 'read' })
+  // id ≤ 32 chars (límite duro de la API, charset [a-zA-Z0-9_-]); único por local
+  // para que Chrome recuerde la última carpeta elegida de CADA local por separado.
+  const pickerId = ('hor-' + String(groupId).replace(/[^a-zA-Z0-9_-]/g, '')).slice(0, 32)
+  const handle = await window.showDirectoryPicker({ id: pickerId, mode: 'read' })
   await idbOp('readwrite', store => store.put(handle, groupId))
   return handle
 }
