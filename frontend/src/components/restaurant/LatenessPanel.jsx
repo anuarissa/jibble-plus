@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { addDays, format, startOfWeek, addMonths, startOfMonth, endOfMonth } from 'date-fns'
-import { Check, X, FileText, Clock, Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, Download, FileSpreadsheet } from 'lucide-react'
+import { Check, X, FileText, Clock, Calendar, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Download, FileSpreadsheet, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Avatar } from '../ui/Avatar'
 import { tardanzasConCondonacion } from '../../utils/stats'
@@ -11,6 +11,7 @@ const MODOS = [
   { id: 'dia', label: 'Día', icon: Calendar },
   { id: 'semana', label: 'Semana', icon: CalendarDays },
   { id: 'mes', label: 'Mes', icon: CalendarRange },
+  { id: 'resumen', label: 'Resumen', icon: Users },
 ]
 
 export function LatenessPanel({ group, empleados, attendance, schedules, cfg }) {
@@ -18,6 +19,7 @@ export function LatenessPanel({ group, empleados, attendance, schedules, cfg }) 
   const [motivo, setMotivo] = useState('')
   const [modo, setModo] = useState('semana')
   const [offset, setOffset] = useState(0)
+  const [expandido, setExpandido] = useState(null) // personId expandido en modo Resumen
 
   // Calcular rango según modo + offset
   const { ini, fin, rangoLabel } = useMemo(() => {
@@ -26,7 +28,7 @@ export function LatenessPanel({ group, empleados, attendance, schedules, cfg }) 
       const d = addDays(today, offset)
       return { ini: d, fin: d, rangoLabel: format(d, 'EEEE dd MMMM yyyy') }
     }
-    if (modo === 'mes') {
+    if (modo === 'mes' || modo === 'resumen') {
       const m = addMonths(startOfMonth(today), offset)
       return { ini: startOfMonth(m), fin: endOfMonth(m), rangoLabel: format(m, 'MMMM yyyy') }
     }
@@ -64,6 +66,45 @@ export function LatenessPanel({ group, empleados, attendance, schedules, cfg }) 
 
   const empById = useMemo(() => Object.fromEntries(empleados.map(e => [e.id, e])), [empleados])
   const nombreLocal = cfg.config.locales[group.id]?.name || group.name
+
+  // Modo Resumen: por empleado → días tarde, min tarde total, multa, % puntualidad.
+  // "Días tarde" cuenta TODAS las llegadas tarde (condonadas incluidas — llegó tarde igual);
+  // la multa suma solo las activas (lo que efectivamente se descuenta).
+  const resumen = useMemo(() => {
+    if (modo !== 'resumen') return []
+    const porPersona = {}
+    for (const t of tardanzas) {
+      if (!porPersona[t.personId]) porPersona[t.personId] = []
+      porPersona[t.personId].push(t)
+    }
+    // Días trabajados = fechas únicas con fichaje en el rango
+    const iniStr = format(ini, 'yyyy-MM-dd')
+    const finStr = format(fin, 'yyyy-MM-dd')
+    const trabajados = {}
+    for (const s of attendance) {
+      if (s.groupId !== group.id || !s.date) continue
+      if (s.date < iniStr || s.date > finStr) continue
+      if (!trabajados[s.personId]) trabajados[s.personId] = new Set()
+      trabajados[s.personId].add(s.date)
+    }
+    const rows = []
+    for (const emp of empleados) {
+      const ts = (porPersona[emp.id] || []).slice().sort((a, b) => a.date.localeCompare(b.date))
+      const diasTrab = trabajados[emp.id]?.size || 0
+      if (ts.length === 0 && diasTrab === 0) continue
+      rows.push({
+        emp,
+        tardanzas: ts,
+        dias: ts.length,
+        minTotal: ts.reduce((a, t) => a + t.minutosTarde, 0),
+        multa: ts.filter(t => !t.condonada).reduce((a, t) => a + t.multa, 0),
+        diasTrab,
+        puntualidad: diasTrab > 0 ? Math.max(0, Math.round(100 * (1 - ts.length / diasTrab))) : null,
+      })
+    }
+    rows.sort((a, b) => b.dias - a.dias || b.minTotal - a.minTotal)
+    return rows
+  }, [modo, tardanzas, attendance, empleados, group.id, ini, fin])
 
   function abrirModal(t) {
     setModalTardanza(t)
@@ -109,6 +150,33 @@ export function LatenessPanel({ group, empleados, attendance, schedules, cfg }) 
     { label: 'Estado', accessor: 'Estado' },
     { label: 'Motivo', accessor: 'Motivo condonacion' },
   ]
+  // Export del modo Resumen (una fila por empleado)
+  const resumenExportRows = useMemo(() => resumen.map(r => ({
+    Empleado: r.emp.fullName,
+    Cargo: r.emp.position || '',
+    Local: nombreLocal,
+    'Días tarde': r.dias,
+    'Min tarde': r.minTotal,
+    'Multa Bs': r.multa,
+    'Días trabajados': r.diasTrab,
+    '% Puntualidad': r.puntualidad == null ? '' : r.puntualidad + '%',
+  })), [resumen, nombreLocal])
+
+  const resumenExportColumns = [
+    { label: 'Empleado', accessor: 'Empleado' },
+    { label: 'Cargo', accessor: 'Cargo' },
+    { label: 'Local', accessor: 'Local' },
+    { label: 'Días tarde', accessor: 'Días tarde' },
+    { label: 'Min tarde', accessor: 'Min tarde' },
+    { label: 'Multa Bs', accessor: 'Multa Bs' },
+    { label: 'Días trabajados', accessor: 'Días trabajados' },
+    { label: '% Puntualidad', accessor: '% Puntualidad' },
+  ]
+
+  const exportActive = modo === 'resumen'
+    ? { rows: resumenExportRows, columns: resumenExportColumns }
+    : { rows: exportRows, columns: exportColumns }
+
   const fileBase = `tardanzas_${nombreLocal.replace(/[^a-z0-9]+/gi, '_')}_${modo}_${format(ini, 'dd-MM-yyyy')}`
 
   function ir(delta) { setOffset(o => o + delta) }
@@ -148,12 +216,12 @@ export function LatenessPanel({ group, empleados, attendance, schedules, cfg }) 
               <button onClick={hoy} className="btn-secondary text-xs">Hoy</button>
               <button onClick={() => ir(1)} disabled={offset >= 0} className="btn-ghost p-2 disabled:opacity-30"><ChevronRight size={16} /></button>
             </div>
-            {tardanzas.length > 0 && (
+            {(modo === 'resumen' ? resumen.length : tardanzas.length) > 0 && (
               <>
-                <button onClick={() => exportCSV(fileBase, exportRows, exportColumns)} className="btn-secondary text-xs">
+                <button onClick={() => exportCSV(fileBase, exportActive.rows, exportActive.columns)} className="btn-secondary text-xs">
                   <Download size={14} /> CSV
                 </button>
-                <button onClick={() => exportExcel(fileBase, exportRows, exportColumns)} className="btn-secondary text-xs">
+                <button onClick={() => exportExcel(fileBase, exportActive.rows, exportActive.columns)} className="btn-secondary text-xs">
                   <FileSpreadsheet size={14} /> Excel
                 </button>
               </>
@@ -161,7 +229,76 @@ export function LatenessPanel({ group, empleados, attendance, schedules, cfg }) 
           </div>
         </div>
 
-        {tardanzas.length === 0 ? (
+        {modo === 'resumen' ? (
+          resumen.length === 0 ? (
+            <p className="text-center text-ink-200 py-8">Sin fichajes ni tardanzas en {rangoLabel}.</p>
+          ) : (
+            <div className="overflow-x-auto scrollbar-thin">
+            <div className="space-y-1.5 min-w-[560px]">
+              {/* Header de columnas */}
+              <div className="grid grid-cols-[1fr_repeat(4,88px)_36px] gap-2 px-3 pb-1 text-[10px] uppercase tracking-wider text-ink-400 font-medium">
+                <span>Empleado</span>
+                <span className="text-center">Días tarde</span>
+                <span className="text-center">Min tarde</span>
+                <span className="text-center">Multa</span>
+                <span className="text-center">Puntualidad</span>
+                <span />
+              </div>
+              {resumen.map(r => {
+                const abierto = expandido === r.emp.id
+                return (
+                  <div key={r.emp.id} className={`rounded-xl border transition ${r.dias === 0 ? 'bg-good/5 border-good/15' : 'bg-bg-700/30 border-white/5'}`}>
+                    <button
+                      onClick={() => setExpandido(abierto ? null : r.emp.id)}
+                      disabled={r.dias === 0}
+                      className="w-full grid grid-cols-[1fr_repeat(4,88px)_36px] gap-2 items-center p-3 text-left disabled:cursor-default hover:bg-white/[0.02] rounded-xl transition"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar name={r.emp.fullName} id={r.emp.id} size="sm" />
+                        <div className="min-w-0">
+                          <div className="font-medium text-ink-50 text-sm truncate">{r.emp.fullName}</div>
+                          <div className="text-[11px] text-ink-400">{r.diasTrab} {r.diasTrab === 1 ? 'día trabajado' : 'días trabajados'}</div>
+                        </div>
+                      </div>
+                      <div className={`text-center font-display font-bold ${r.dias === 0 ? 'text-good' : r.dias >= 4 ? 'text-bad' : 'text-warn'}`}>
+                        {r.dias}
+                      </div>
+                      <div className={`text-center text-sm font-mono ${r.minTotal === 0 ? 'text-ink-400' : 'text-ink-100'}`}>
+                        {r.minTotal} min
+                      </div>
+                      <div className={`text-center text-sm ${r.multa === 0 ? 'text-ink-400' : 'text-bad'}`}>
+                        {formatBs(r.multa)}
+                      </div>
+                      <div className={`text-center text-sm font-medium ${r.puntualidad == null ? 'text-ink-400' : r.puntualidad >= 90 ? 'text-good' : r.puntualidad >= 70 ? 'text-warn' : 'text-bad'}`}>
+                        {r.puntualidad == null ? '—' : `${r.puntualidad}%`}
+                      </div>
+                      <div className="flex justify-center text-ink-400">
+                        {r.dias > 0 && <ChevronDown size={15} className={`transition ${abierto ? 'rotate-180' : ''}`} />}
+                      </div>
+                    </button>
+                    {abierto && r.dias > 0 && (
+                      <div className="px-4 pb-3 border-t border-white/5 pt-2">
+                        <ul className="space-y-1">
+                          {r.tardanzas.map(t => (
+                            <li key={t.id} className="flex items-center gap-3 text-xs py-1">
+                              <span className="text-ink-200 w-28 shrink-0">{formatFecha(t.date)}</span>
+                              <span className="text-ink-400 font-mono">prog {t.scheduledStart}</span>
+                              <span className="text-ink-400 font-mono">llegó {formatHora(t.clockIn)}</span>
+                              <span className={`font-display font-bold ${t.severidad === 'bad' ? 'text-bad' : 'text-warn'}`}>+{t.minutosTarde} min</span>
+                              <span className={t.condonada ? 'line-through text-ink-400' : 'text-bad'}>{formatBs(t.multa)}</span>
+                              {t.condonada && <span className="badge bg-good/15 text-good text-[10px]">CONDONADA</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            </div>
+          )
+        ) : tardanzas.length === 0 ? (
           <p className="text-center text-ink-200 py-8">No hay tardanzas en este rango. 👌</p>
         ) : (
           <div className="space-y-2">

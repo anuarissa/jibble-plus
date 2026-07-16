@@ -136,7 +136,10 @@ export async function parseExcelTurnos(file, empleados) {
 
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
   if (!rows.length) throw new Error('Hoja vacía.')
+  return parseRowsSimple(rows, empleados)
+}
 
+function parseRowsSimple(rows, empleados) {
   // Primera fila: headers. La columna 0 debe ser "Empleado", luego 7 días.
   // Aceptamos variantes de mayúsculas.
   const header = rows[0].map(h => String(h).trim().toLowerCase())
@@ -201,11 +204,40 @@ export async function parseExcelTurnos(file, empleados) {
     }
   }
 
-  return { aplicar, warnings, errores, celdasOk, celdasIgnoradas }
+  return { aplicar, warnings, errores, celdasOk, celdasIgnoradas, noEncontrados: [...noEncontrados] }
 }
 
+// Exportada como normalizarNombre para el mapa de alias (carpeta-horarios.js / UI).
+export { normalizar as normalizarNombre }
+
 function normalizar(s) {
-  return String(s).trim().toLowerCase().replace(/\s+/g, ' ')
+  return String(s)
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+}
+
+// Distancia de Levenshtein acotada (para typos tipo "CRITIAN" → "cristian").
+function levenshtein(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 99
+  const prev = new Array(b.length + 1)
+  for (let j = 0; j <= b.length; j++) prev[j] = j
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0]
+    prev[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j]
+      prev[j] = Math.min(
+        prev[j] + 1,
+        prev[j - 1] + 1,
+        diag + (a[i - 1] === b[j - 1] ? 0 : 1),
+      )
+      diag = tmp
+    }
+  }
+  return prev[b.length]
 }
 
 // =====================================================================
@@ -216,28 +248,72 @@ function normalizar(s) {
 // y devuelve siempre el shape unificado:
 //   { aplicarPorSemana: { weekKey: { personId: { dow: valor } } },
 //     warnings, celdasOk, celdasIgnoradas, formato: 'simple'|'anuar' }
-export async function parseExcelTurnosAuto(file, empleados, weekKeyActualSiUnoSolo) {
+export async function parseExcelTurnosAuto(file, empleados, weekKeyActualSiUnoSolo, opts = {}) {
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type: 'array' })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  if (!ws) throw new Error('El archivo no tiene hojas válidas.')
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
-  if (!rows.length) throw new Error('Hoja vacía.')
+  return parseWorkbookTurnos(wb, empleados, { weekKeyFallback: weekKeyActualSiUnoSolo, ...opts })
+}
 
-  // Heurística de detección: ¿hay alguna fila con "ENTRADA" en col D y "SALIDA" en col D justo después?
-  const esFormatoAnuar = detectarFormatoAnuar(rows)
-
-  if (esFormatoAnuar) {
-    return parseFormatoAnuar(rows, empleados)
+// Parsea un workbook ya leído. Lo usan el import manual (parseExcelTurnosAuto)
+// y la sincronización de carpeta OneDrive (carpeta-horarios.js).
+// opts:
+//   weekKeyFallback: semana a usar si el archivo es formato simple (sin fechas)
+//   aliases: { [nombreNormalizado]: personId | 'IGNORAR' } — resoluciones manuales persistidas
+export function parseWorkbookTurnos(wb, empleados, opts = {}) {
+  // Leer todas las hojas una vez y clasificarlas.
+  const hojas = []
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name]
+    if (!ws) continue
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+    if (!rows.length) continue
+    hojas.push({
+      name,
+      rows,
+      esAnuar: detectarFormatoAnuar(rows),
+      esHorario: normalizar(name).includes('horario'),
+    })
   }
-  // Formato simple
-  const result = await parseExcelTurnos(file, empleados)
+  if (!hojas.length) throw new Error('El archivo no tiene hojas válidas.')
+
+  // Preferir hojas llamadas "Horario(s)" con formato planilla; si no, cualquier hoja con ese formato.
+  // (En las planillas reales la hoja "Horarios" NO es la primera del archivo.)
+  let candidatas = hojas.filter(h => h.esHorario && h.esAnuar)
+  if (!candidatas.length) candidatas = hojas.filter(h => h.esAnuar)
+
+  if (candidatas.length) {
+    const total = {
+      aplicarPorSemana: {}, warnings: [], celdasOk: 0, celdasIgnoradas: 0,
+      formato: 'anuar', semanasDetectadas: [], noEncontrados: [],
+    }
+    for (const h of candidatas) {
+      const r = parseFormatoAnuar(h.rows, empleados, opts)
+      for (const [wk, porPersona] of Object.entries(r.aplicarPorSemana)) {
+        if (!total.aplicarPorSemana[wk]) total.aplicarPorSemana[wk] = {}
+        for (const [pid, dias] of Object.entries(porPersona)) {
+          total.aplicarPorSemana[wk][pid] = { ...total.aplicarPorSemana[wk][pid], ...dias }
+        }
+      }
+      total.warnings.push(...r.warnings)
+      total.celdasOk += r.celdasOk
+      total.celdasIgnoradas += r.celdasIgnoradas
+      for (const wk of r.semanasDetectadas) if (!total.semanasDetectadas.includes(wk)) total.semanasDetectadas.push(wk)
+      for (const n of r.noEncontrados) if (!total.noEncontrados.includes(n)) total.noEncontrados.push(n)
+    }
+    return total
+  }
+
+  // Formato simple (template de la app): primera hoja, sin fechas → weekKeyFallback
+  const result = parseRowsSimple(hojas[0].rows, empleados)
+  const weekKey = opts.weekKeyFallback || isoWeekKey(new Date())
   return {
-    aplicarPorSemana: { [weekKeyActualSiUnoSolo]: result.aplicar },
+    aplicarPorSemana: { [weekKey]: result.aplicar },
     warnings: result.warnings,
     celdasOk: result.celdasOk,
     celdasIgnoradas: result.celdasIgnoradas,
     formato: 'simple',
+    semanasDetectadas: [weekKey],
+    noEncontrados: result.noEncontrados,
   }
 }
 
@@ -251,7 +327,8 @@ function detectarFormatoAnuar(rows) {
   return false
 }
 
-function parseFormatoAnuar(rows, empleados) {
+function parseFormatoAnuar(rows, empleados, opts = {}) {
+  const aliases = opts.aliases || {}
   const empByNombre = construirIndiceNombres(empleados)
   const aplicarPorSemana = {} // { weekKey: { personId: { dow: valor } } }
   const warnings = []
@@ -288,7 +365,12 @@ function parseFormatoAnuar(rows, empleados) {
       const d = parseFechaCorta(f)
       if (d) { weekKey = isoWeekKey(d); break }
     }
-    if (!weekKey) weekKey = isoWeekKey(new Date())
+    if (!weekKey) {
+      // Sin fecha no sabemos a qué semana pertenece el bloque — saltarlo es más
+      // seguro que adivinar la semana actual.
+      warnings.push(`Bloque de horarios sin fechas (fila ${i + 1}) — omitido.`)
+      continue
+    }
     semanasDetectadas.add(weekKey)
     if (!aplicarPorSemana[weekKey]) aplicarPorSemana[weekKey] = {}
 
@@ -317,7 +399,11 @@ function parseFormatoAnuar(rows, empleados) {
         if (!nombreRaw) nombreRaw = String(filaSalida[1] || '').trim()
         if (!nombreRaw) { j += 3; continue }
 
-        const emp = matchEmpleado(empByNombre, nombreRaw, ambiguos)
+        // Alias resueltos a mano tienen prioridad sobre el matching automático.
+        const alias = aliases[normalizar(nombreRaw)]
+        if (alias === 'IGNORAR') { j += 3; continue }
+        let emp = alias ? empleados.find(e => e.id === alias) : null
+        if (!emp) emp = matchEmpleado(empByNombre, nombreRaw, ambiguos)
         if (!emp) {
           if (!ambiguos.has(nombreRaw)) noEncontrados.add(nombreRaw)
           j += 3
@@ -333,9 +419,20 @@ function parseFormatoAnuar(rows, empleados) {
           const sRaw = filaSalida[4 + c]
           try {
             const valor = parseEntradaSalida(eRaw, sRaw)
-            if (valor) {
-              aplicarPorSemana[weekKey][emp.id][String(dow)] = valor
-              celdasOk++
+            if (valor === 'IGNORAR') {
+              celdasIgnoradas++
+            } else if (valor) {
+              // El mismo empleado puede aparecer en 2 bloques la misma semana
+              // (ej. "EXTRA" dos veces) = turno partido → fusionar tramos.
+              const prev = aplicarPorSemana[weekKey][emp.id][String(dow)]
+              const { merged, error } = fusionarTurnos(prev, valor)
+              if (error) {
+                warnings.push(`${nombreRaw} · ${DIAS_LABEL[dow - 1]}: ${error}`)
+                celdasIgnoradas++
+              } else {
+                aplicarPorSemana[weekKey][emp.id][String(dow)] = merged
+                celdasOk++
+              }
             }
           } catch (e) {
             warnings.push(`${nombreRaw} · ${DIAS_LABEL[dow - 1]}: ${e.message}`)
@@ -362,7 +459,32 @@ function parseFormatoAnuar(rows, empleados) {
     warnings.push(`Detectadas ${semanasDetectadas.size} semanas distintas en el archivo: ${[...semanasDetectadas].join(', ')}`)
   }
 
-  return { aplicarPorSemana, warnings, celdasOk, celdasIgnoradas, formato: 'anuar', semanasDetectadas: [...semanasDetectadas] }
+  return { aplicarPorSemana, warnings, celdasOk, celdasIgnoradas, formato: 'anuar', semanasDetectadas: [...semanasDetectadas], noEncontrados: [...noEncontrados] }
+}
+
+// Fusiona dos turnos del mismo día (empleado repetido en la planilla = turno partido).
+// Devuelve { merged } o { merged: prev, error } si los tramos se solapan.
+function fusionarTurnos(prev, nuevo) {
+  if (!prev) return { merged: nuevo }
+  if (prev?.tipo === 'OFF') return { merged: nuevo }
+  if (nuevo?.tipo === 'OFF') return { merged: prev }
+  const aMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m }
+  const tramos = [
+    ...(prev.segments || [{ startTime: prev.startTime, endTime: prev.endTime }]),
+    ...(nuevo.segments || [{ startTime: nuevo.startTime, endTime: nuevo.endTime }]),
+  ].sort((x, y) => aMin(x.startTime) - aMin(y.startTime))
+  for (let k = 1; k < tramos.length; k++) {
+    if (aMin(tramos[k].startTime) < aMin(tramos[k - 1].endTime)) {
+      return { merged: prev, error: `tramos solapados (${tramos[k - 1].startTime}-${tramos[k - 1].endTime} y ${tramos[k].startTime}-${tramos[k].endTime})` }
+    }
+  }
+  return {
+    merged: {
+      startTime: tramos[0].startTime,
+      endTime: tramos[tramos.length - 1].endTime,
+      segments: tramos,
+    },
+  }
 }
 
 // Match flexible: nombre exacto > primer nombre exacto > substring
@@ -387,6 +509,19 @@ function matchEmpleado(empByNombre, raw, ambiguousOut = null) {
   if (norm.length >= 4) {
     for (const [k, v] of empByNombre) {
       if (k.includes(norm) || norm.includes(k.split(' ')[0])) return v
+    }
+  }
+  // Typos: Levenshtein <= 2 sobre el primer nombre (ej "critian" → "cristian").
+  // Solo si el match es ÚNICO — si empata con varios, es ambiguo.
+  if (firstWord.length >= 4) {
+    const fuzzy = []
+    for (const [k, v] of empByNombre) {
+      if (levenshtein(firstWord, k.split(' ')[0]) <= 2) fuzzy.push(v)
+    }
+    if (fuzzy.length === 1) return fuzzy[0]
+    if (fuzzy.length > 1) {
+      if (ambiguousOut) ambiguousOut.set(raw, fuzzy)
+      return null
     }
   }
   return null
@@ -415,9 +550,11 @@ const MESES = { ene:0, feb:1, mar:2, abr:3, may:4, jun:5, jul:6, ago:7, sep:8, o
 function parseFechaCorta(raw) {
   if (raw == null || raw === '') return null
   if (typeof raw === 'number') {
-    // Excel serial date
+    // Excel serial date. Construir la fecha en hora LOCAL: si se devuelve la
+    // medianoche UTC, en Bolivia (UTC-4) cae al día anterior y corre la semana ISO.
     const epoch = new Date(Date.UTC(1899, 11, 30))
-    return new Date(epoch.getTime() + raw * 86400000)
+    const d = new Date(epoch.getTime() + raw * 86400000)
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
   }
   const s = String(raw).trim()
   // Formato "2-Mar", "14-Feb"
@@ -439,6 +576,8 @@ function parseEntradaSalida(entradaRaw, salidaRaw) {
   if (!e && !s) return null
   // Texto largo no-hora (ej "APOYO HORAS CLAVES Y CAJERO NUEVO") → ignorar
   if (e === 'TEXTO' || s === 'TEXTO') return null
+  // ENTRADA 00:00 = fila de relleno (ej. bloque GERENTE en la planilla real) → ignorar el día
+  if (parseHora(e) === '00:00') return 'IGNORAR'
   if (!e || !s) throw new Error(`Falta ${!e ? 'entrada' : 'salida'}`)
 
   const eH = parseHora(e)

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, format, startOfWeek } from 'date-fns'
-import { ChevronLeft, ChevronRight, Copy, Download, Upload, AlertCircle, StickyNote, X, Pencil, Save, Undo2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Copy, Download, Upload, AlertCircle, StickyNote, X, Pencil, Save, Undo2, FolderOpen, FolderCheck, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Avatar } from '../ui/Avatar'
 import {
@@ -8,6 +8,8 @@ import {
   getDefaultParaDia, normalizarCelda, esExcepcion, tipoExcepcion, contarCambios, turnoToText,
 } from '../../utils/turnos'
 import { descargarTemplateTurnos, parseExcelTurnosAuto } from '../../utils/excel-turnos'
+import { setAlias } from '../../utils/carpeta-horarios'
+import { useCarpetaHorarios } from '../../hooks/useCarpetaHorarios'
 
 // Texto de una celda para la lista de cambios: "08:00-16:00" o "09:00-16:00 + 18:00-23:00".
 const celdaTexto = (celda) => turnoToText(celda)
@@ -28,6 +30,41 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
   const ini = useMemo(() => addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), offset * 7), [offset])
   const fin = useMemo(() => addDays(ini, 6), [ini])
   const weekKey = useMemo(() => isoWeekKey(ini), [ini])
+
+  // Sincronización automática desde la carpeta OneDrive del local (Excel = fuente de verdad).
+  const carpeta = useCarpetaHorarios({
+    groupId: group.id,
+    empleados,
+    turnos: cfg.turnos,
+    setTurnosSemana: cfg.setTurnosSemana,
+  })
+
+  // Toast solo cuando la sync cambió algo (el auto-sync corre en cada visita).
+  const lastResultRef = useRef(null)
+  useEffect(() => {
+    const r = carpeta.resultado
+    if (!r || r === lastResultRef.current) return
+    lastResultRef.current = r
+    if (r.error) toast.error('Carpeta OneDrive: ' + r.error)
+    else if (r.semanasAplicadas > 0) {
+      toast.success(`Horarios actualizados desde la carpeta: ${r.semanasAplicadas} ${r.semanasAplicadas === 1 ? 'semana' : 'semanas'} (${r.archivosLeidos.length} ${r.archivosLeidos.length === 1 ? 'archivo' : 'archivos'})`, { duration: 6000 })
+    }
+  }, [carpeta.resultado])
+
+  async function handleConectarCarpeta() {
+    try {
+      await carpeta.conectar()
+    } catch (e) {
+      toast.error('No se pudo conectar la carpeta: ' + e.message)
+    }
+  }
+
+  function handleResolverNombre(nombre, valor) {
+    if (!valor) return
+    setAlias(group.id, nombre, valor)
+    toast.success(valor === 'IGNORAR' ? `"${nombre}" se ignorará de ahora en más` : `"${nombre}" vinculado`)
+    carpeta.sincronizar({ conGesto: true })
+  }
 
   const semanaTurnos = cfg.turnos?.[weekKey] || {}
   const semanaAnterior = semanaAnteriorKey(weekKey)
@@ -263,8 +300,99 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
             <Upload size={14} /> Importar Excel
           </button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportar} />
+          {carpeta.soportado && (carpeta.estado === 'sin-carpeta' || carpeta.estado === 'cargando' ? (
+            <button onClick={handleConectarCarpeta} className="btn-secondary text-xs" title="Elegir la carpeta de OneDrive donde el gerente guarda las planillas de horarios">
+              <FolderOpen size={14} /> Conectar carpeta OneDrive
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 rounded-lg border border-good/30 bg-good/5 pl-2.5 pr-1 py-1" title={carpeta.resultado?.archivosLeidos?.length ? `Archivos: ${carpeta.resultado.archivosLeidos.join(', ')}` : 'Carpeta conectada'}>
+              <FolderCheck size={14} className="text-good shrink-0" />
+              <span className="text-xs text-ink-200 max-w-[140px] truncate">{carpeta.nombreCarpeta || 'Carpeta'}</span>
+              {carpeta.lastSync && (
+                <span className="text-[10px] text-ink-400 whitespace-nowrap">{format(carpeta.lastSync, 'dd MMM HH:mm')}</span>
+              )}
+              <button
+                onClick={() => carpeta.sincronizar({ conGesto: true })}
+                disabled={carpeta.estado === 'sincronizando'}
+                className="btn-ghost p-1.5"
+                title={carpeta.estado === 'requiere-permiso' ? 'El navegador pide re-confirmar el permiso de lectura' : 'Volver a leer los Excel de la carpeta'}
+              >
+                <RefreshCw size={13} className={carpeta.estado === 'sincronizando' ? 'animate-spin' : ''} />
+              </button>
+              <button
+                onClick={() => { if (confirm('¿Desconectar la carpeta de horarios? Los turnos ya cargados no se borran.')) carpeta.desconectar() }}
+                className="btn-ghost p-1.5"
+                title="Desconectar carpeta"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ))}
         </div>
       </div>
+
+      {/* Permiso de lectura pendiente (el navegador lo pide de nuevo tras reiniciar) */}
+      {carpeta.estado === 'requiere-permiso' && (
+        <div className="mb-4 rounded-xl border border-warn/40 bg-warn/5 p-3 flex items-center gap-3 flex-wrap">
+          <AlertCircle size={16} className="text-warn shrink-0" />
+          <span className="text-sm text-ink-200">
+            El navegador necesita que confirmes el permiso de lectura de <span className="font-medium text-ink-50">{carpeta.nombreCarpeta}</span>.
+            Tip: al aceptar, elegí <span className="font-medium text-ink-50">"Permitir en cada visita"</span> para no volver a verlo.
+          </span>
+          <button onClick={() => carpeta.sincronizar({ conGesto: true })} className="btn-primary text-xs ml-auto">
+            <RefreshCw size={13} /> Dar permiso y sincronizar
+          </button>
+        </div>
+      )}
+
+      {/* Nombres del Excel que no matchearon con ningún empleado → resolver una vez */}
+      {carpeta.resultado?.noEncontrados?.length > 0 && (
+        <div className="mb-4 rounded-xl border border-warn/40 bg-warn/5 p-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={18} className="text-warn mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-ink-50 text-sm mb-1">
+                Nombres del Excel sin empleado asignado ({carpeta.resultado.noEncontrados.length})
+              </div>
+              <p className="text-xs text-ink-300 mb-2">
+                Elegí a quién corresponde cada nombre (se recuerda para siempre) o marcá "Ignorar siempre" (ej. personal que ya no trabaja).
+              </p>
+              <ul className="space-y-1.5">
+                {carpeta.resultado.noEncontrados.map(nombre => (
+                  <li key={nombre} className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-sm text-ink-50">{nombre}</span>
+                    <span className="text-ink-400 text-xs">→</span>
+                    <select
+                      defaultValue=""
+                      onChange={e => handleResolverNombre(nombre, e.target.value)}
+                      className="bg-bg-700 border border-white/10 rounded-lg text-xs px-2 py-1.5 text-ink-100"
+                    >
+                      <option value="" disabled>Elegir empleado…</option>
+                      {empleados.map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.fullName}</option>
+                      ))}
+                      <option value="IGNORAR">— Ignorar siempre —</option>
+                    </select>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Avisos de la sync de carpeta (celdas mal formateadas, archivos ilegibles) */}
+      {carpeta.resultado?.warnings?.length > 0 && (
+        <div className="mb-4 rounded-xl border border-warn/30 bg-warn/5 p-3 flex items-start gap-3">
+          <AlertCircle size={16} className="text-warn mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-ink-50 text-sm mb-1">Avisos de la carpeta ({carpeta.resultado.warnings.length})</div>
+            <ul className="text-xs text-ink-300 space-y-0.5 list-disc pl-4 max-h-28 overflow-y-auto scrollbar-thin">
+              {carpeta.resultado.warnings.map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* Banner sticky cuando hay cambios pendientes */}
       {pendingCount > 0 && (
