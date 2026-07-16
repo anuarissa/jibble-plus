@@ -381,6 +381,32 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
         </div>
       )}
 
+      {/* Chequeo inverso: empleados registrados que NO están en el Excel reciente,
+          y semana actual sin cargar — lo importante con la rotación de personal */}
+      {(carpeta.resultado?.sinHorario?.length > 0 || carpeta.resultado?.faltaSemanaActual) && carpeta.resultado?.ultimaSemana && (
+        <div className="mb-4 rounded-xl border border-warn/40 bg-warn/5 p-3 flex items-start gap-3">
+          <AlertCircle size={18} className="text-warn mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0 space-y-1.5">
+            {carpeta.resultado.sinHorario?.length > 0 && (
+              <div>
+                <span className="font-semibold text-ink-50 text-sm">
+                  Empleados sin horario en el Excel reciente (semana {carpeta.resultado.ultimaSemana}):
+                </span>
+                <span className="text-sm text-ink-200"> {carpeta.resultado.sinHorario.join(', ')}</span>
+                <p className="text-xs text-ink-300 mt-0.5">
+                  Agrégalos a la planilla del gerente o corrige el nombre si están escritos distinto.
+                </p>
+              </div>
+            )}
+            {carpeta.resultado.faltaSemanaActual && (
+              <p className="text-sm text-ink-200">
+                El Excel más reciente llega hasta la semana <span className="font-medium text-ink-50">{carpeta.resultado.ultimaSemana}</span> — <span className="font-semibold text-ink-50">falta cargar la semana actual ({isoWeekKey(new Date())})</span>.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Avisos de la sync de carpeta (celdas mal formateadas, archivos ilegibles) */}
       {carpeta.resultado?.warnings?.length > 0 && (
         <div className="mb-4 rounded-xl border border-warn/30 bg-warn/5 p-3 flex items-start gap-3">

@@ -8,6 +8,7 @@ import {
   soportaCarpetas, getHandle, conectarCarpeta, desconectarCarpeta,
   estadoPermiso, pedirPermiso, leerCarpeta, getAliases,
 } from '../utils/carpeta-horarios'
+import { isoWeekKey } from '../utils/turnos'
 
 const KEY_SYNC = 'jibble_carpetas_sync_v1'
 
@@ -68,6 +69,16 @@ export function useCarpetaHorarios({ groupId, empleados, turnos, setTurnosSemana
     try {
       const lectura = await leerCarpeta(handle, empleadosRef.current, { aliases: getAliases(groupId) })
       const { semanasAplicadas, semanas } = aplicar(lectura)
+      // Chequeo inverso (clave con la rotación de personal): ¿qué empleados
+      // registrados NO aparecen en la última semana que trae el Excel?
+      const semanasOrdenadas = Object.keys(lectura.aplicarPorSemana).sort()
+      const ultimaSemana = semanasOrdenadas[semanasOrdenadas.length - 1] || null
+      const sinHorario = ultimaSemana
+        ? (empleadosRef.current || [])
+            .filter(e => !lectura.aplicarPorSemana[ultimaSemana]?.[e.id])
+            .map(e => e.fullName)
+        : []
+      const faltaSemanaActual = !semanasOrdenadas.includes(isoWeekKey(new Date()))
       const res = {
         semanasAplicadas,
         semanasDetectadas: semanas,
@@ -75,6 +86,9 @@ export function useCarpetaHorarios({ groupId, empleados, turnos, setTurnosSemana
         warnings: lectura.warnings,
         noEncontrados: lectura.noEncontrados,
         archivosLeidos: lectura.archivosLeidos,
+        ultimaSemana,
+        sinHorario,
+        faltaSemanaActual,
       }
       setResultado(res)
       const ts = Date.now()

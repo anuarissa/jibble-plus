@@ -11,7 +11,14 @@
 // archivos definen la misma semana gana el de modificación más reciente.
 
 import * as XLSX from 'xlsx-js-style'
+import { addDays } from 'date-fns'
 import { parseWorkbookTurnos, normalizarNombre } from './excel-turnos'
+import { isoWeekKey } from './turnos'
+
+// Ventana de "recencia": semana actual + N anteriores. Nombres no encontrados y
+// warnings de celdas de semanas más viejas se silencian (alta rotación de personal
+// — esos nombres ya no existen), aunque sus turnos se aplican igual.
+const SEMANAS_RECIENTES = 2
 
 export const soportaCarpetas = typeof window !== 'undefined' && 'showDirectoryPicker' in window
 
@@ -113,6 +120,7 @@ export async function leerCarpeta(handle, empleados, opts = {}) {
     aplicarPorSemana: {}, warnings: [], noEncontrados: [],
     archivosLeidos: [], celdasOk: 0, celdasIgnoradas: 0,
   }
+  const desdeSemana = isoWeekKey(addDays(new Date(), -7 * SEMANAS_RECIENTES))
   for (const file of archivos) {
     try {
       const buf = await file.arrayBuffer()
@@ -120,7 +128,7 @@ export async function leerCarpeta(handle, empleados, opts = {}) {
       // Formato simple no trae fechas: la semana sale del nombre del archivo
       // (los templates de la app se llaman turnos_<local>_<weekKey>.xlsx).
       const weekEnNombre = file.name.match(/(\d{4}-W\d{1,2})/)?.[1]
-      const r = parseWorkbookTurnos(wb, empleados, { ...opts, weekKeyFallback: weekEnNombre })
+      const r = parseWorkbookTurnos(wb, empleados, { ...opts, weekKeyFallback: weekEnNombre, desdeSemana })
       if (r.formato === 'simple' && !weekEnNombre) {
         total.warnings.push(`${file.name}: template simple sin semana en el nombre del archivo — omitido.`)
         continue

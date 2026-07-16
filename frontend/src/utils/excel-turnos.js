@@ -374,6 +374,12 @@ function parseFormatoAnuar(rows, empleados, opts = {}) {
     semanasDetectadas.add(weekKey)
     if (!aplicarPorSemana[weekKey]) aplicarPorSemana[weekKey] = {}
 
+    // Semanas viejas (< opts.desdeSemana): los turnos se aplican igual (sirven para
+    // reportes históricos), pero NO generan ruido de nombres no encontrados ni
+    // warnings de celdas — hay mucha rotación y esos nombres ya no existen.
+    // weekKeys zero-padded → comparación lexicográfica válida.
+    const esReciente = !opts.desdeSemana || weekKey >= opts.desdeSemana
+
     // Iterar empleados
     let j = i + 1
     let safety = 0
@@ -403,9 +409,9 @@ function parseFormatoAnuar(rows, empleados, opts = {}) {
         const alias = aliases[normalizar(nombreRaw)]
         if (alias === 'IGNORAR') { j += 3; continue }
         let emp = alias ? empleados.find(e => e.id === alias) : null
-        if (!emp) emp = matchEmpleado(empByNombre, nombreRaw, ambiguos)
+        if (!emp) emp = matchEmpleado(empByNombre, nombreRaw, esReciente ? ambiguos : null)
         if (!emp) {
-          if (!ambiguos.has(nombreRaw)) noEncontrados.add(nombreRaw)
+          if (esReciente && !ambiguos.has(nombreRaw)) noEncontrados.add(nombreRaw)
           j += 3
           continue
         }
@@ -427,7 +433,7 @@ function parseFormatoAnuar(rows, empleados, opts = {}) {
               const prev = aplicarPorSemana[weekKey][emp.id][String(dow)]
               const { merged, error } = fusionarTurnos(prev, valor)
               if (error) {
-                warnings.push(`${nombreRaw} · ${DIAS_LABEL[dow - 1]}: ${error}`)
+                if (esReciente) warnings.push(`${nombreRaw} · ${DIAS_LABEL[dow - 1]}: ${error}`)
                 celdasIgnoradas++
               } else {
                 aplicarPorSemana[weekKey][emp.id][String(dow)] = merged
@@ -435,7 +441,7 @@ function parseFormatoAnuar(rows, empleados, opts = {}) {
               }
             }
           } catch (e) {
-            warnings.push(`${nombreRaw} · ${DIAS_LABEL[dow - 1]}: ${e.message}`)
+            if (esReciente) warnings.push(`${nombreRaw} · ${DIAS_LABEL[dow - 1]}: ${e.message}`)
             celdasIgnoradas++
           }
         }
