@@ -7,7 +7,7 @@ import { X, ChevronLeft, ChevronRight, Printer, FileSpreadsheet, Calendar, Alert
 import { Avatar } from '../ui/Avatar'
 import { tablaMensual, tablaSemanal, tardanzasConCondonacion, attendanceEnRango, groupByPerson, extrasYRetrasoDeCells } from '../../utils/stats'
 import { planillaLocal } from '../../utils/payroll'
-import { formatHoras, formatBs } from '../../utils/format'
+import { formatHoras, formatBs, formatMesAno } from '../../utils/format'
 import { descargarReporteMensual } from '../../utils/reporte-mensual'
 
 export function MonthlyReportModal({ empleados, attendance, schedules, cfg, group, onClose }) {
@@ -17,7 +17,7 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
   const ini = useMemo(() => startOfMonth(mes), [mes])
   const fin = useMemo(() => endOfMonth(mes), [mes])
   const nombreLocal = cfg?.config?.locales?.[group?.id]?.name || group?.name || ''
-  const monthLabel = format(mes, "MMMM yyyy")
+  const monthLabel = formatMesAno(mes)
   const monthKey = format(mes, 'yyyy-MM')
 
   useEffect(() => {
@@ -80,16 +80,20 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
       const tablaSem = tablaSemanal({ empleados, attendance, schedules, ini: new Date(semanaIni),
         condonaciones: cfg.condonaciones, turnos: cfg.turnos, personOverrides: cfg.personOverrides })
       const horasExtraPorPersona = {}, horasPagablesPorPersona = {}, descuentoNoRegistroPorPersona = {}, diasNoRegistroPorPersona = {}
+      const multaBsPorPersona = {}, minTardePorPersona = {}
       for (const fila of tablaSem.filas) {
         const agg = extrasYRetrasoDeCells(fila.cells)
         horasExtraPorPersona[fila.empleado.id] = agg.horasExtra
         horasPagablesPorPersona[fila.empleado.id] = agg.horasPagables
         descuentoNoRegistroPorPersona[fila.empleado.id] = agg.descuentoNoRegistro
         diasNoRegistroPorPersona[fila.empleado.id] = agg.diasNoRegistro
+        multaBsPorPersona[fila.empleado.id] = agg.multaBs
+        minTardePorPersona[fila.empleado.id] = agg.minTarde
       }
       const ps = planillaLocal(empleadosConTarifa, groupByPerson(fichSem), groupByPerson(tardSem),
         { multiplicadorExtra: cfg.config.settings.multiplicadorExtra,
-          horasExtraPorPersona, horasPagablesPorPersona, descuentoNoRegistroPorPersona, diasNoRegistroPorPersona })
+          horasExtraPorPersona, horasPagablesPorPersona, descuentoNoRegistroPorPersona, diasNoRegistroPorPersona,
+          multaBsPorPersona, minTardePorPersona })
       for (const f of ps.filas) {
         if (!acc[f.personId]) acc[f.personId] = { totalAPagar: 0, bruto: 0, descuentoTardanza: 0, descuentoNoRegistro: 0 }
         acc[f.personId].totalAPagar += f.totalAPagar
@@ -147,7 +151,7 @@ export function MonthlyReportModal({ empleados, attendance, schedules, cfg, grou
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-ink-300 uppercase tracking-wider font-semibold">Reporte de Asistencia · Mensual</p>
-                <h2 className="font-display font-bold text-2xl text-ink-50 tracking-tight capitalize">{monthLabel}</h2>
+                <h2 className="font-display font-bold text-2xl text-ink-50 tracking-tight">{monthLabel}</h2>
                 <p className="text-sm text-ink-200 mt-0.5">{nombreLocal} · {empleados.length} empleados · {format(ini, "dd MMM")} – {format(fin, "dd MMM yyyy")}</p>
               </div>
               <div className="text-right">

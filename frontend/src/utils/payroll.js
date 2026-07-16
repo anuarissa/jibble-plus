@@ -54,8 +54,16 @@ export function planillaEmpleado(empleado, fichajes, tardanzas, config = {}) {
   const extraTarifa = horasExtra * tarifa * mult
 
   const tardanzasActivas = tardanzas.filter(t => !t.condonada)
-  const descuentoTardanza = tardanzasActivas.reduce((s, t) => s + (t.multa || 0), 0)
-  const minutosTardeTotales = tardanzasActivas.reduce((s, t) => s + (t.minutosTarde || 0), 0)
+  // Multa: si el caller pasa config.multaBsDia / minTardeDia (calculados por día en
+  // stats.extrasYRetrasoDeCells), se usan — esa es la regla real: ignora las tardanzas
+  // absurdas (>3h = horario mal cargado) y respeta condonaciones. Si no (legacy),
+  // suma las multas crudas de la lista de tardanzas.
+  const descuentoTardanza = config.multaBsDia != null
+    ? Math.max(0, config.multaBsDia)
+    : tardanzasActivas.reduce((s, t) => s + (t.multa || 0), 0)
+  const minutosTardeTotales = config.minTardeDia != null
+    ? Math.max(0, config.minTardeDia)
+    : tardanzasActivas.reduce((s, t) => s + (t.minutosTarde || 0), 0)
 
   // Descuento por no-registro (20 Bs × día incompleto), categoría separada, se ACUMULA.
   const descuentoNoRegistro = Math.max(0, config.descuentoNoRegistro || 0)
@@ -91,17 +99,23 @@ export function planillaEmpleado(empleado, fichajes, tardanzas, config = {}) {
 //   config.horasPagablesPorPersona     { [personId]: horas reales pagables (días incompletos → programado) }
 //   config.descuentoNoRegistroPorPersona { [personId]: 20 × días incompletos }
 //   config.diasNoRegistroPorPersona    { [personId]: cantidad de días incompletos }
+//   config.multaBsPorPersona           { [personId]: multa Bs por tardanza (regla por día) }
+//   config.minTardePorPersona          { [personId]: minutos tarde (regla por día) }
 export function planillaLocal(empleados, fichajesPorPersona, tardanzasPorPersona, config = {}) {
   const extraPP = config.horasExtraPorPersona || null
   const pagablesPP = config.horasPagablesPorPersona || null
   const descNoRegPP = config.descuentoNoRegistroPorPersona || null
   const diasNoRegPP = config.diasNoRegistroPorPersona || null
+  const multaPP = config.multaBsPorPersona || null
+  const minTardePP = config.minTardePorPersona || null
   const filas = empleados.map(emp => {
     const cfg = { ...config }
     if (extraPP) cfg.horasExtraDia = extraPP[emp.id] ?? 0
     if (pagablesPP) cfg.horasPagablesDia = pagablesPP[emp.id] ?? 0
     if (descNoRegPP) cfg.descuentoNoRegistro = descNoRegPP[emp.id] ?? 0
     if (diasNoRegPP) cfg.diasNoRegistro = diasNoRegPP[emp.id] ?? 0
+    if (multaPP) cfg.multaBsDia = multaPP[emp.id] ?? 0
+    if (minTardePP) cfg.minTardeDia = minTardePP[emp.id] ?? 0
     return planillaEmpleado(emp, fichajesPorPersona[emp.id] || [], tardanzasPorPersona[emp.id] || [], cfg)
   })
   const totales = filas.reduce((acc, f) => ({

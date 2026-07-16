@@ -5,7 +5,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { addDays, format, startOfWeek } from 'date-fns'
 import { X, ChevronLeft, ChevronRight, Printer, FileSpreadsheet, Clock, Calendar, AlertTriangle, DollarSign } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
-import { tablaSemanal, tardanzasConCondonacion, attendanceEnRango, groupByPerson } from '../../utils/stats'
+import { tablaSemanal, tardanzasConCondonacion, attendanceEnRango, groupByPerson, extrasYRetrasoDeCells } from '../../utils/stats'
 import { planillaLocal } from '../../utils/payroll'
 import { formatHora, formatHoras, formatBs, formatFecha } from '../../utils/format'
 import { exportExcelMultiSheet } from '../../utils/export'
@@ -52,9 +52,20 @@ export function EmployeeReportModal({ empleados, attendance, schedules, cfg, gro
       tarifa: cfg.getTarifaResolved(empleado.id),
       expectedHoursPerWeek: schedules.find(s => s.personId === empleado.id)?.expectedHoursPerWeek ?? 0,
     }
+    // Cálculos POR DÍA (misma regla que Planilla y Sueldos): extras >30min, horas
+    // pagables, no-registro y multa con tope de 3h + condonaciones.
+    const agg = extrasYRetrasoDeCells(fila.cells)
     const planilla = planillaLocal([empConTarifa],
       groupByPerson(fichajesEmp), groupByPerson(tardanzas),
-      { multiplicadorExtra: cfg.config.settings.multiplicadorExtra }).filas[0] || {}
+      {
+        multiplicadorExtra: cfg.config.settings.multiplicadorExtra,
+        horasExtraPorPersona: { [empleado.id]: agg.horasExtra },
+        horasPagablesPorPersona: { [empleado.id]: agg.horasPagables },
+        descuentoNoRegistroPorPersona: { [empleado.id]: agg.descuentoNoRegistro },
+        diasNoRegistroPorPersona: { [empleado.id]: agg.diasNoRegistro },
+        multaBsPorPersona: { [empleado.id]: agg.multaBs },
+        minTardePorPersona: { [empleado.id]: agg.minTarde },
+      }).filas[0] || {}
 
     // KPIs
     const totalHoras = cells.reduce((s, c) => s + (c.horas || 0), 0)

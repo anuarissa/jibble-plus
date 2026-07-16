@@ -225,7 +225,8 @@ function resolverDiaPartido({ segments, fichajesDelDia, condonaciones, turnoCust
   const horasPagables = (registroIncompleto || horas > 16) ? horasProgramadas : horas
   const minExtraComputado = (minSalidaDiff != null && minSalidaDiff > 30 && minSalidaDiff < 600)
     ? minSalidaDiff - 30 : 0
-  const anomalia = !!(registroIncompleto || horas > 16 || maxMin > 180)
+  const anomalia = !!(registroIncompleto || horas > 16 || maxMin > 180 ||
+    (minSalidaDiff != null && minSalidaDiff < -180))
 
   return {
     state, day, dayStr,
@@ -255,6 +256,10 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
   let segmentsProgramado = null
   let programado = false
   let turnoCustom = false
+  // sinHorario: no hay NINGUNA fuente real de horario para ese día (ni turno de la
+  // semana, ni OFF explícito, ni defaultWeek del empleado). No se puede evaluar:
+  // ni falta, ni tardanza, ni horas programadas. Distinto de "día libre" (OFF real).
+  let sinHorario = false
 
   if (celdaTurno?.tipo === 'OFF') {
     programado = false  // OFF explícito
@@ -265,7 +270,7 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
     programado = true
     turnoCustom = true
   } else {
-    // Sin celda explícita → usar default por día (defaultWeek > schedule legacy)
+    // Sin celda explícita → usar default por día (defaultWeek > schedule real)
     const def = getDefaultParaDia(emp.id, dow, personOverrides, sched)
     if (def?.tipo === 'OFF') {
       programado = false
@@ -274,10 +279,37 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
       endTimeProgramado = def.endTime
       segmentsProgramado = def.segments || null
       programado = true
+    } else {
+      sinHorario = true
     }
   }
 
   if (!programado) {
+    // Sin horario cargado: si fichó, sus horas cuentan (no sabemos su turno);
+    // si no fichó, no es falta — no sabemos si debía venir.
+    if (sinHorario) {
+      if (!fich) return { state: 'idle', day, dayStr, sinHorario: true, motivoColor: 'sinHorario' }
+      const outRefSH = fich.clockOut ? new Date(fich.clockOut) : new Date()
+      const horasSH = (outRefSH - new Date(fich.clockIn)) / 3600000
+      const dudosoSH = !fich.clockIn || !fich.clockOut || horasSH > 16
+      return {
+        state: 'good', day, dayStr, fichaje: fich,
+        // Sin horario no hay a qué compararlo: si el registro está incompleto no se
+        // pueden estimar horas (tampoco se cobra el no-registro: el día no se evalúa).
+        horas: dudosoSH ? 0 : horasSH,
+        mins: 0,
+        programadoStart: null, programadoEnd: null,
+        salidaState: fich.clockOut ? null : 'sinSalida',
+        minSalidaDiff: null,
+        horasProgramadas: 0,
+        horasPagables: dudosoSH ? 0 : horasSH,
+        registroIncompleto: false,
+        anomalia: dudosoSH,
+        sinHorario: true,
+        motivoColor: 'sinHorario',
+        turnoCustom: false,
+      }
+    }
     if (!fich) return { state: 'idle', day, dayStr }
     // Vino en su día libre: mostrar fichaje aunque siga fichando ahora.
     // Si no hay clockOut, calculamos horas hasta el momento actual.
@@ -309,10 +341,11 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
   // ENTRADA
   let state = 'good'
   let mins = 0
+  const condonada = !!condonaciones?.[fich.id]?.condonada
   if (startTimeProgramado && fich.clockIn) {
     mins = minutosTarde(startTimeProgramado, fich.clockIn)
     if (mins > 0) state = mins < 15 ? 'warn' : 'bad'
-    if (condonaciones?.[fich.id]?.condonada) state = 'good'
+    if (condonada) state = 'good'
   }
 
   const tieneEntrada = !!fich.clockIn
@@ -383,11 +416,13 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
   const anomalia = !!(
     registroIncompleto ||           // marcó solo ingreso o solo salida
     horas > 16 ||                   // olvidó cerrar → horas absurdas
-    mins > 180                      // entró 3h+ tarde = horario mal configurado
+    mins > 180 ||                   // entró 3h+ tarde = horario mal configurado
+    (minSalidaDiff != null && minSalidaDiff < -180)  // salió 3h+ antes = idem (ej. turno PM cargado a alguien que trabaja AM)
   )
 
   return {
     state, day, dayStr, fichaje: fich, horas, mins,
+    condonada,                      // la tardanza fue perdonada → no genera multa
     programadoStart: startTimeProgramado,
     programadoEnd: endTimeProgramado,
     salidaState,
@@ -467,14 +502,40 @@ export function extrasYRetrasoDeCells(cells) {
     horasPagables += c.horasPagables || 0
     if (c.registroIncompleto) { diasNoRegistro++; descuentoNoRegistro += MULTA_NO_REGISTRO }
     // Tardanza real (1–180 min): se acumula aunque el día sea incompleto. >180 = horario mal config.
-    // En turnos partidos la multa viene precalculada por tramo (multaDia, escalonada por tramo).
-    if (c.mins > 0 && c.mins <= 180) { minTarde += c.mins; multaBs += (c.multaDia != null ? c.multaDia : calcularMulta(c.mins)) }
+    // La multa NO se cobra si la tardanza fue condonada. En turnos partidos la multa
+    // viene precalculada por tramo (multaDia, que ya excluye los tramos condonados).
+    if (c.mins > 0 && c.mins <= 180) {
+      minTarde += c.mins
+      if (!c.condonada) multaBs += (c.multaDia != null ? c.multaDia : calcularMulta(c.mins))
+    }
     // Extra solo en días no anómalos (no incompletos)
     if (!c.anomalia) minExtra += c.minExtraComputado || 0
     if (c.anomalia) anomalias++
   }
   return { horasExtra: minExtra / 60, minExtra, minTarde, multaBs,
            diasNoRegistro, descuentoNoRegistro, horasPagables, anomalias }
+}
+
+// Explica en lenguaje claro por qué un día "no cuadra" y qué se hizo con él.
+// Devuelve null si el día está bien. Se muestra en rojo junto al día.
+export function comentarioAnomalia(c) {
+  if (!c) return null
+  if (c.sinHorario) {
+    if (c.anomalia) return 'Sin horario cargado y registro incompleto — no se pueden calcular sus horas. Carga la planilla del mes en Turnos.'
+    if (c.fichaje) return 'Sin horario cargado: se pagan las horas fichadas, pero no se evalúa tardanza ni salida.'
+    return 'Sin horario cargado ese día — no se evalúa (no cuenta como falta).'
+  }
+  if (!c.anomalia) return null
+  // Orden: primero lo que rompe el dato del día, después lo que delata un horario mal cargado.
+  if (c.salidaState === 'sinEntrada') return 'Fichó salida sin entrada — se pagan las horas programadas y se descuentan 20 Bs por no-registro.'
+  if (c.registroIncompleto) return 'Fichó entrada pero no salida — se pagan las horas programadas y se descuentan 20 Bs por no-registro.'
+  if (c.horas > 16) return 'Horas absurdas (olvidó cerrar el fichaje) — se pagan las horas programadas, no las fichadas.'
+  if (c.mins > 180) return `Entró ${Math.floor(c.mins / 60)}h ${c.mins % 60}min tarde: el horario cargado no coincide con la realidad. No se cobra multa — revisa el Excel de turnos.`
+  if (c.minSalidaDiff != null && c.minSalidaDiff < -180) {
+    const h = Math.round(Math.abs(c.minSalidaDiff) / 60)
+    return `Salió ${h}h antes de su salida programada (${c.programadoStart}–${c.programadoEnd}): ese horario no es el que trabaja. Corrige su horario base en Empleados o carga el turno real del Excel.`
+  }
+  return 'Datos a revisar.'
 }
 
 // Convierte una "celda" resuelta (de vistaDia/tablaSemanal) a una fila plana
@@ -486,7 +547,7 @@ export function celdaToRow(empleado, c, nombreLocal) {
       Empleado: empleado.fullName,
       Cargo: empleado.position || '',
       Local: nombreLocal,
-      Estado: 'Día libre',
+      Estado: c.sinHorario ? 'Sin horario cargado' : 'Día libre',
       'Programado entrada': '',
       'Entrada real': '',
       'Min tarde': '',
@@ -518,6 +579,7 @@ export function celdaToRow(empleado, c, nombreLocal) {
     c.motivoColor === 'salidaTemprana' ? `Salió ${Math.abs(c.minSalidaDiff || 0)}min antes` :
     c.motivoColor === 'extras' ? `Quedó +${c.minSalidaDiff || 0}min extras` :
     c.motivoColor === 'sinSalida' ? 'Sin salida (activo)' :
+    c.motivoColor === 'sinHorario' ? 'Sin horario cargado' :
     c.motivoColor === 'diaLibreTrabajado' ? 'Vino en día libre' : '—'
   return {
     Fecha: c.dayStr,

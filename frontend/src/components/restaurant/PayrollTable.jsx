@@ -2,9 +2,8 @@ import { useMemo, useState } from 'react'
 import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, CalendarRange } from 'lucide-react'
 import { addDays, startOfWeek, format, addMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { Avatar } from '../ui/Avatar'
-import { planillaLocal } from '../../utils/payroll'
-import { attendanceEnRango, groupByPerson, tardanzasConCondonacion, tablaSemanal, extrasYRetrasoDeCells } from '../../utils/stats'
-import { formatBs, formatHoras } from '../../utils/format'
+import { resumenSueldos } from '../../utils/resumen-sueldos'
+import { formatBs, formatHoras, formatFechaCorta, formatMesAno } from '../../utils/format'
 import { exportCSV, exportExcel } from '../../utils/export'
 
 const MODOS = [
@@ -25,7 +24,7 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
       const f = endOfMonth(m)
       return {
         ini: i, fin: f,
-        rangoLabel: format(m, "MMMM 'de' yyyy"),
+        rangoLabel: formatMesAno(m),
         fileLabel: `mes_${format(m, 'MM-yyyy')}`,
       }
     }
@@ -33,111 +32,26 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
     const dom = addDays(lun, 6)
     return {
       ini: lun, fin: dom,
-      rangoLabel: `Semana ${format(lun, 'dd MMM')} – ${format(dom, 'dd MMM yyyy')}`,
+      rangoLabel: `Semana ${formatFechaCorta(lun)} – ${formatFechaCorta(dom)} ${format(dom, 'yyyy')}`,
       fileLabel: `semana_${format(lun, 'dd-MM-yyyy')}`,
     }
   }, [modo, offset])
 
-  // Para modo Mes: iterar las semanas que tocan el mes y sumar las planillas semanales.
-  // Eso preserva el cálculo correcto de horas extra por semana (la regla legal local).
-  const planilla = useMemo(() => {
-    const empleadosConTarifa = empleados.map(emp => {
-      const sched = schedules.find(s => s.personId === emp.id)
-      return {
-        ...emp,
-        tarifa: cfg.getTarifaResolved(emp.id),
-        expectedHoursPerWeek: sched?.expectedHoursPerWeek ?? 0,
-      }
-    })
-
-    function planillaSemana(iniS, finS) {
-      const semana = attendanceEnRango(attendance, iniS, finS).filter(a => a.groupId === group.id)
-      const fichajesPorPersona = groupByPerson(semana)
-      const tardanzas = tardanzasConCondonacion(attendance, schedules, cfg.condonaciones, iniS, finS, cfg.turnos, cfg.personOverrides)
-        .filter(t => t.groupId === group.id)
-      const tardanzasPorPersona = groupByPerson(tardanzas)
-      // Cálculos POR DÍA desde stats: extras (>30min), horas pagables, descuento no-registro
-      const tabla = tablaSemanal({ empleados, attendance, schedules, ini: iniS,
-        condonaciones: cfg.condonaciones, turnos: cfg.turnos, personOverrides: cfg.personOverrides })
-      const horasExtraPorPersona = {}, horasPagablesPorPersona = {}, descuentoNoRegistroPorPersona = {}, diasNoRegistroPorPersona = {}
-      for (const fila of tabla.filas) {
-        const agg = extrasYRetrasoDeCells(fila.cells)
-        horasExtraPorPersona[fila.empleado.id] = agg.horasExtra
-        horasPagablesPorPersona[fila.empleado.id] = agg.horasPagables
-        descuentoNoRegistroPorPersona[fila.empleado.id] = agg.descuentoNoRegistro
-        diasNoRegistroPorPersona[fila.empleado.id] = agg.diasNoRegistro
-      }
-      return planillaLocal(empleadosConTarifa, fichajesPorPersona, tardanzasPorPersona, {
-        multiplicadorExtra: cfg.config.settings.multiplicadorExtra,
-        horasExtraPorPersona, horasPagablesPorPersona, descuentoNoRegistroPorPersona, diasNoRegistroPorPersona,
-      })
-    }
-
-    if (modo === 'semana') return planillaSemana(ini, fin)
-
-    // Mes: acumular por semanas
-    const acc = {} // { personId: filaAcumulada }
-    let semanaIni = startOfWeek(ini, { weekStartsOn: 1 })
-    while (semanaIni <= fin) {
-      const semanaFin = addDays(semanaIni, 6)
-      const r = planillaSemana(semanaIni, semanaFin)
-      // Filtrar fichajes/tardanzas que caigan FUERA del mes (la primera/última semana suele cruzar)
-      // Aquí planillaSemana ya filtró por groupId pero usa rango entero — para precisión recortamos.
-      // Para simplificar, sumamos directo. Si una semana cruza, los días fuera no aportan fichajes (no estaban en el rango).
-      // Pero acá el rango es la semana completa, así que SÍ se suman. Ajustamos abajo recortando attendance previo.
-      for (const fila of r.filas) {
-        if (!acc[fila.personId]) {
-          acc[fila.personId] = {
-            personId: fila.personId, fullName: fila.fullName, position: fila.position, tarifa: fila.tarifa,
-            horasTotales: 0, horasNormales: 0, horasExtra: 0,
-            baseTarifa: 0, extraTarifa: 0, bruto: 0,
-            descuentoTardanza: 0, descuentoNoRegistro: 0, diasNoRegistro: 0, minutosTardeTotales: 0, totalAPagar: 0,
-            cantidadTardanzas: 0, tardanzasCondonadas: 0,
-          }
-        }
-        const a = acc[fila.personId]
-        a.horasTotales += fila.horasTotales
-        a.horasNormales += fila.horasNormales
-        a.horasExtra += fila.horasExtra
-        a.baseTarifa += fila.baseTarifa
-        a.extraTarifa += fila.extraTarifa
-        a.bruto += fila.bruto
-        a.descuentoTardanza += fila.descuentoTardanza
-        a.descuentoNoRegistro += fila.descuentoNoRegistro || 0
-        a.diasNoRegistro += fila.diasNoRegistro || 0
-        a.minutosTardeTotales += fila.minutosTardeTotales || 0
-        a.totalAPagar += fila.totalAPagar
-        a.cantidadTardanzas += fila.cantidadTardanzas
-        a.tardanzasCondonadas += fila.tardanzasCondonadas
-      }
-      semanaIni = addDays(semanaIni, 7)
-    }
-
-    const r2 = round
-    const filas = Object.values(acc).map(a => ({
-      ...a,
-      horasTotales: r2(a.horasTotales),
-      horasNormales: r2(a.horasNormales),
-      horasExtra: r2(a.horasExtra),
-      baseTarifa: r2(a.baseTarifa),
-      extraTarifa: r2(a.extraTarifa),
-      bruto: r2(a.bruto),
-      descuentoTardanza: r2(a.descuentoTardanza),
-      descuentoNoRegistro: r2(a.descuentoNoRegistro),
-      totalAPagar: r2(a.totalAPagar),
-    }))
-    const totales = filas.reduce((t, f) => ({
-      horasTotales: t.horasTotales + f.horasTotales,
-      horasNormales: t.horasNormales + f.horasNormales,
-      horasExtra: t.horasExtra + f.horasExtra,
-      bruto: t.bruto + f.bruto,
-      descuentoTardanza: t.descuentoTardanza + f.descuentoTardanza,
-      descuentoNoRegistro: t.descuentoNoRegistro + f.descuentoNoRegistro,
-      totalAPagar: t.totalAPagar + f.totalAPagar,
-    }), { horasTotales: 0, horasNormales: 0, horasExtra: 0, bruto: 0, descuentoTardanza: 0, descuentoNoRegistro: 0, totalAPagar: 0 })
-    Object.keys(totales).forEach(k => totales[k] = r2(totales[k]))
-    return { filas, totales }
-  }, [empleados, attendance, schedules, cfg.tarifas, cfg.personOverrides, cfg.condonaciones, cfg.turnos, ini, fin, modo, group.id, cfg.config.settings.multiplicadorExtra])
+  // Mismo motor que la página Sueldos → los Bs cuadran entre ambas vistas.
+  // Recorta por DÍA al rango: las semanas que cruzan el borde del mes ya no
+  // meten días del mes vecino (bug anterior del modo Mes).
+  const planilla = useMemo(() => resumenSueldos({
+    empleados,
+    attendance,
+    schedules,
+    condonaciones: cfg.condonaciones,
+    turnos: cfg.turnos,
+    personOverrides: cfg.personOverrides,
+    ini, fin,
+    settings: cfg.config.settings,
+    getTarifa: cfg.getTarifaResolved,
+    groupId: group.id,
+  }), [empleados, attendance, schedules, cfg.tarifas, cfg.personOverrides, cfg.condonaciones, cfg.turnos, ini, fin, group.id, cfg.config.settings])
 
   const exportColumns = [
     { label: 'Empleado', accessor: 'fullName', width: 26 },
@@ -161,7 +75,7 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
           <h3 className="font-display font-semibold text-lg">Planilla {modo === 'mes' ? 'mensual' : 'semanal'}</h3>
-          <p className="text-xs text-ink-300 mt-0.5 capitalize">{rangoLabel} · Tarifas se editan inline</p>
+          <p className="text-xs text-ink-300 mt-0.5">{rangoLabel} · Tarifas se editan inline</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex gap-1 bg-bg-700/50 p-1 rounded-xl border border-white/5">
@@ -264,7 +178,3 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
   )
 }
 
-function round(n, d = 2) {
-  const f = Math.pow(10, d)
-  return Math.round(n * f) / f
-}

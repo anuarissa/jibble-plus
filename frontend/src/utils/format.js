@@ -3,13 +3,20 @@
 // el runtime (browser local, headless CI, deploy serverless, etc.)
 
 import { parseISO } from 'date-fns'
+import { es } from 'date-fns/locale'
 import { format as fmtTz } from 'date-fns-tz'
 
 const TZ = 'America/La_Paz'
 
-function fmt(d, pattern) {
+function fmt(d, pattern, opts) {
   const date = typeof d === 'string' ? parseISO(d) : d
-  return fmtTz(date, pattern, { timeZone: TZ })
+  return fmtTz(date, pattern, { timeZone: TZ, ...opts })
+}
+
+// Capitaliza solo la primera letra ("junio de 2026" → "Junio de 2026").
+// OJO: no usar la clase CSS `capitalize`, que produce "Junio De 2026".
+function capitalizar(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
 }
 
 const moneyFmt = new Intl.NumberFormat('es-BO', {
@@ -35,7 +42,22 @@ export function formatFecha(d) {
 }
 
 export function formatFechaCorta(d) {
-  return fmt(d, 'dd MMM')
+  return fmt(d, 'dd MMM', { locale: es })
+}
+
+// "Junio de 2026" — para los encabezados de rango mensual.
+export function formatMesAno(d) {
+  return capitalizar(fmt(d, "MMMM 'de' yyyy", { locale: es }))
+}
+
+// "Jueves 16 de julio de 2026" — encabezado de un día.
+export function formatDiaLargo(d) {
+  return capitalizar(fmt(d, "EEEE dd 'de' MMMM 'de' yyyy", { locale: es }))
+}
+
+// "Lun 13 jul" — etiquetas cortas con día de semana.
+export function formatDiaCorto(d) {
+  return capitalizar(fmt(d, 'EEE dd MMM', { locale: es }))
 }
 
 export function formatHora(d) {

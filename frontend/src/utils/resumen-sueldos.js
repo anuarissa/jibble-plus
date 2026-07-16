@@ -71,6 +71,7 @@ export function resumenSueldos({
   const tardanzasPorPersona = groupByPerson(tardanzasRango)
 
   const horasExtraPorPersona = {}, horasPagablesPorPersona = {}, descuentoNoRegistroPorPersona = {}, diasNoRegistroPorPersona = {}
+  const multaBsPorPersona = {}, minTardePorPersona = {}
   const aggPorPersona = {}
   for (const emp of empleados) {
     const agg = extrasYRetrasoDeCells(cellsPorPersona[emp.id] || [])
@@ -79,11 +80,14 @@ export function resumenSueldos({
     horasPagablesPorPersona[emp.id] = agg.horasPagables
     descuentoNoRegistroPorPersona[emp.id] = agg.descuentoNoRegistro
     diasNoRegistroPorPersona[emp.id] = agg.diasNoRegistro
+    multaBsPorPersona[emp.id] = agg.multaBs
+    minTardePorPersona[emp.id] = agg.minTarde
   }
 
   const planilla = planillaLocal(empleadosConTarifa, fichajesPorPersona, tardanzasPorPersona, {
     multiplicadorExtra: settings?.multiplicadorExtra,
     horasExtraPorPersona, horasPagablesPorPersona, descuentoNoRegistroPorPersona, diasNoRegistroPorPersona,
+    multaBsPorPersona, minTardePorPersona,
   })
   const planillaPorPersona = Object.fromEntries(planilla.filas.map(f => [f.personId, f]))
 
@@ -97,6 +101,10 @@ export function resumenSueldos({
     const faltas = cells
       .filter(c => c.falto && c.dayStr < hoyStr)
       .map(c => ({ dayStr: c.dayStr, programadoStart: c.programadoStart, programadoEnd: c.programadoEnd, horas: horasDeProgramado(c.programadoStart, c.programadoEnd) }))
+
+    // Días sin horario cargado (no evaluables) y días con datos a revisar.
+    const diasSinHorario = cells.filter(c => c.sinHorario).length
+    const diasARevisar = cells.filter(c => c.anomalia).length
 
     // Días anómalos (sin salida / horas absurdas): usar horas pagables (programadas)
     // en vez de las horas crudas — un "sin salida" viejo inflaría el total hasta hoy.
@@ -117,6 +125,12 @@ export function resumenSueldos({
       fullName: emp.fullName,
       position: emp.position || '',
       tarifa: pago.tarifa ?? getTarifa(emp.id),
+      // Campos de planilla (los usa también la pestaña Planilla → mismos Bs)
+      horasTotales: pago.horasTotales ?? 0,
+      horasNormales: pago.horasNormales ?? 0,
+      baseTarifa: pago.baseTarifa ?? 0,
+      extraTarifa: pago.extraTarifa ?? 0,
+      minutosTardeTotales: pago.minutosTardeTotales ?? 0,
       horasProgramadas: round(horasProgramadas),
       horasTrabajadas: round(horasTrabajadas),
       horasPagables: round(agg.horasPagables),
@@ -131,7 +145,10 @@ export function resumenSueldos({
       diasNoRegistro: agg.diasNoRegistro,
       descuentoNoRegistro: round(agg.descuentoNoRegistro),
       horasExtra: round(agg.horasExtra),
+      minExtra: agg.minExtra,
       anomalias: agg.anomalias,
+      diasSinHorario,
+      diasARevisar,
       bruto: pago.bruto ?? 0,
       descuentoTardanza: pago.descuentoTardanza ?? 0,
       totalAPagar: pago.totalAPagar ?? 0,
@@ -146,32 +163,47 @@ export function resumenSueldos({
     horasProgramadas: t.horasProgramadas + f.horasProgramadas,
     horasTrabajadas: t.horasTrabajadas + f.horasTrabajadas,
     horasPagables: t.horasPagables + f.horasPagables,
+    horasTotales: t.horasTotales + f.horasTotales,
+    horasNormales: t.horasNormales + f.horasNormales,
     horasExtra: t.horasExtra + f.horasExtra,
+    minExtra: t.minExtra + f.minExtra,
     diasTarde: t.diasTarde + f.diasTarde,
     minTarde: t.minTarde + f.minTarde,
     multaBs: t.multaBs + f.multaBs,
     faltas: t.faltas + f.faltas.length,
     diasNoRegistro: t.diasNoRegistro + f.diasNoRegistro,
     descuentoNoRegistro: t.descuentoNoRegistro + f.descuentoNoRegistro,
+    diasSinHorario: t.diasSinHorario + f.diasSinHorario,
+    diasARevisar: t.diasARevisar + f.diasARevisar,
     bruto: t.bruto + f.bruto,
     descuentoTardanza: t.descuentoTardanza + f.descuentoTardanza,
     totalAPagar: t.totalAPagar + f.totalAPagar,
   }), {
-    horasProgramadas: 0, horasTrabajadas: 0, horasPagables: 0, horasExtra: 0,
+    horasProgramadas: 0, horasTrabajadas: 0, horasPagables: 0, horasTotales: 0, horasNormales: 0,
+    horasExtra: 0, minExtra: 0,
     diasTarde: 0, minTarde: 0, multaBs: 0, faltas: 0,
-    diasNoRegistro: 0, descuentoNoRegistro: 0, bruto: 0, descuentoTardanza: 0, totalAPagar: 0,
+    diasNoRegistro: 0, descuentoNoRegistro: 0, diasSinHorario: 0, diasARevisar: 0,
+    bruto: 0, descuentoTardanza: 0, totalAPagar: 0,
   })
   Object.keys(totales).forEach(k => { totales[k] = round(totales[k]) })
   totales.cumplimiento = totales.horasProgramadas > 0
     ? Math.round((totales.horasPagables / totales.horasProgramadas) * 100)
     : null
+  // Descuento REALMENTE aplicado: por empleado el pago tiene piso en 0, así que
+  // bruto − (multas + no-registro) puede no cuadrar. Este siempre cuadra.
+  totales.descuentoAplicado = round(totales.bruto - totales.totalAPagar)
+
+  // Empleados sin ningún horario cargado en el rango → hay que cargar su planilla.
+  const empleadosSinHorario = filas
+    .filter(f => f.horasProgramadas === 0 && f.diasSinHorario > 0)
+    .map(f => f.fullName)
 
   // 5) Serie diaria para gráficas
   const porDiaMap = {}
   for (const f of filas) {
     for (const c of f.cells) {
       if (!porDiaMap[c.dayStr]) {
-        porDiaMap[c.dayStr] = { dayStr: c.dayStr, horas: 0, horasProgramadas: 0, minTarde: 0, faltas: 0 }
+        porDiaMap[c.dayStr] = { dayStr: c.dayStr, horas: 0, horasProgramadas: 0, minTarde: 0, minExtra: 0, faltas: 0, aRevisar: 0 }
       }
       const d = porDiaMap[c.dayStr]
       d.horas += c.anomalia ? (c.horasPagables || 0) : (c.horas || 0)
@@ -179,12 +211,14 @@ export function resumenSueldos({
         ? (c.dayStr < hoyStr ? horasDeProgramado(c.programadoStart, c.programadoEnd) : 0)
         : (c.horasProgramadas || 0)
       if (c.mins > 0 && c.mins <= 180) d.minTarde += c.mins
+      if (!c.anomalia) d.minExtra += c.minExtraComputado || 0
       if (c.falto && c.dayStr < hoyStr) d.faltas++
+      if (c.anomalia) d.aRevisar++
     }
   }
   const porDia = Object.values(porDiaMap)
     .sort((a, b) => a.dayStr.localeCompare(b.dayStr))
     .map(d => ({ ...d, horas: round(d.horas), horasProgramadas: round(d.horasProgramadas) }))
 
-  return { filas, totales, porDia }
+  return { filas, totales, porDia, empleadosSinHorario }
 }

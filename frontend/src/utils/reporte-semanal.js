@@ -38,16 +38,20 @@ export function descargarReporteSemanal({
   })
   // Cálculos POR DÍA: extras (>30min), horas pagables, descuento no-registro
   const horasExtraPorPersona = {}, horasPagablesPorPersona = {}, descuentoNoRegistroPorPersona = {}, diasNoRegistroPorPersona = {}
+  const multaBsPorPersona = {}, minTardePorPersona = {}
   for (const fila of semana.filas) {
     const agg = extrasYRetrasoDeCells(fila.cells)
     horasExtraPorPersona[fila.empleado.id] = agg.horasExtra
     horasPagablesPorPersona[fila.empleado.id] = agg.horasPagables
     descuentoNoRegistroPorPersona[fila.empleado.id] = agg.descuentoNoRegistro
     diasNoRegistroPorPersona[fila.empleado.id] = agg.diasNoRegistro
+    multaBsPorPersona[fila.empleado.id] = agg.multaBs
+    minTardePorPersona[fila.empleado.id] = agg.minTarde
   }
   const planilla = planillaLocal(empleadosConTarifa, fichajesPorPersona, tardanzasPorPersona, {
     multiplicadorExtra: cfg.config.settings.multiplicadorExtra,
     horasExtraPorPersona, horasPagablesPorPersona, descuentoNoRegistroPorPersona, diasNoRegistroPorPersona,
+    multaBsPorPersona, minTardePorPersona,
   })
 
   // === MÉTRICAS PARA RESUMEN ===

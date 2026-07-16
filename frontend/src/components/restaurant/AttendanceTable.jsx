@@ -3,7 +3,7 @@ import { addDays, format, startOfWeek, addMonths, startOfMonth } from 'date-fns'
 import { ChevronLeft, ChevronRight, CalendarDays, Calendar, CalendarRange, Download, FileSpreadsheet } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
 import { tablaSemanal, vistaDia, tablaMensual, celdaToRow, EXPORT_COLUMNS_ASISTENCIA } from '../../utils/stats'
-import { formatHoras, formatHora, formatFechaCorta, formatFecha } from '../../utils/format'
+import { formatHoras, formatHora, formatFechaCorta, formatFecha, formatMesAno, formatDiaLargo } from '../../utils/format'
 import { exportCSV, exportExcel } from '../../utils/export'
 import { descargarReporteSemanal } from '../../utils/reporte-semanal'
 import { CeldaDetalleModal, MotivoBadge } from './CeldaDetalleModal'
@@ -191,7 +191,7 @@ function DiaView({ empleados, attendance, schedules, condonaciones, turnos, pers
     <>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div>
-          <h4 className="font-display font-bold capitalize text-lg">{format(dia, 'EEEE dd MMMM yyyy')}</h4>
+          <h4 className="font-display font-bold text-lg">{formatDiaLargo(dia)}</h4>
           <p className="text-sm text-ink-200 mt-1">{filas.filter(f => f.fichaje).length} fichados · {filas.filter(f => f.falto).length} faltaron · {filas.filter(f => f.state === 'idle' && !f.falto).length} día libre</p>
         </div>
         <div className="flex gap-2">
@@ -419,7 +419,7 @@ function MesView({ empleados, attendance, schedules, condonaciones, turnos, pers
   return (
     <>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
-        <h4 className="font-display font-bold capitalize text-lg">{format(mes, 'MMMM yyyy')}</h4>
+        <h4 className="font-display font-bold text-lg">{formatMesAno(mes)}</h4>
         <div className="flex items-center gap-3 flex-wrap">
           <p className="text-sm text-ink-200">
             {totalEmp} empleados · <span className="text-good font-semibold">{totalATiempo}</span> a tiempo · <span className="text-bad font-semibold">{totalTardanzas}</span> tarde · <span className="font-semibold text-ink-100">{formatHoras(totalHorasMes)}</span> totales

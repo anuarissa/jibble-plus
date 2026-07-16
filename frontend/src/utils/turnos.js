@@ -104,6 +104,10 @@ export function getDefaultParaDia(personId, dow, personOverrides, schedule) {
     if (c) return c
     return null
   }
+  // schedule.isDefault = horario genérico (el 09:00-18:00 Lun-Sáb que Jibble asigna
+  // a todos por defecto). NO es un horario real: no se puede afirmar que ese día
+  // debía venir ni a qué hora. Sin turno de la semana ni defaultWeek → sin horario.
+  if (schedule?.isDefault) return null
   if (schedule?.daysOfWeek?.includes(dow) && schedule.startTime && schedule.endTime) {
     return { startTime: schedule.startTime, endTime: schedule.endTime }
   }

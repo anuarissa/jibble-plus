@@ -9,15 +9,15 @@ import {
 } from 'recharts'
 import {
   Wallet, Calendar, CalendarDays, CalendarRange, CalendarSearch,
-  ChevronLeft, ChevronRight, ChevronDown, Download, FileSpreadsheet, Clock, UserX, Timer,
+  ChevronLeft, ChevronRight, ChevronDown, Download, FileSpreadsheet, Clock, UserX, Timer, AlertTriangle,
 } from 'lucide-react'
 import { addDays, addMonths, format, startOfMonth, endOfMonth, startOfWeek, parseISO } from 'date-fns'
 import { useJibble } from '../hooks/useJibble'
 import { Avatar } from '../components/ui/Avatar'
 import { Skeleton } from '../components/ui/Skeleton'
 import { resumenSueldos } from '../utils/resumen-sueldos'
-import { celdaToRow } from '../utils/stats'
-import { formatBs, formatHoras, formatFecha } from '../utils/format'
+import { celdaToRow, comentarioAnomalia } from '../utils/stats'
+import { formatBs, formatHoras, formatFecha, formatFechaCorta, formatMesAno, formatDiaLargo } from '../utils/format'
 import { exportCSV, exportExcel } from '../utils/export'
 
 const MODOS = [
@@ -31,6 +31,10 @@ const MODOS = [
 // trabajadas = naranja de la marca un paso más profundo; programadas = azul de referencia.
 const COLOR_TRABAJADAS = '#e8571f'
 const COLOR_PROGRAMADAS = '#5c85d6'
+// Tardanza = rojo (es lo malo); extras = azul. No reusar el naranja de "Trabajadas"
+// para que un mismo color no signifique cosas distintas entre gráficas.
+const COLOR_TARDE = '#ef4444'
+const COLOR_EXTRA = '#5c85d6'
 const TOOLTIP_STYLE = {
   background: '#1a1a1f', border: '1px solid rgba(255,255,255,0.06)',
   borderRadius: 12, color: '#fafafa', fontSize: 12,
@@ -50,24 +54,28 @@ export default function ResumenSueldos({ cfg }) {
   const grupoActivo = groupId || grupos[0]?.id || ''
   const nombreLocal = cfg.config.locales[grupoActivo]?.name || grupos.find(g => g.id === grupoActivo)?.name || ''
 
-  const { ini, fin, rangoLabel } = useMemo(() => {
+  const { ini, fin, rangoLabel, rangoCorto } = useMemo(() => {
     const today = new Date()
     if (modo === 'dia') {
       const d = addDays(today, offset)
-      return { ini: d, fin: d, rangoLabel: format(d, 'EEEE dd MMMM yyyy') }
+      return { ini: d, fin: d, rangoLabel: formatDiaLargo(d), rangoCorto: formatFechaCorta(d) }
     }
     if (modo === 'mes') {
       const m = addMonths(startOfMonth(today), offset)
-      return { ini: startOfMonth(m), fin: endOfMonth(m), rangoLabel: format(m, "MMMM 'de' yyyy") }
+      return { ini: startOfMonth(m), fin: endOfMonth(m), rangoLabel: formatMesAno(m), rangoCorto: formatMesAno(m) }
     }
     if (modo === 'rango') {
       const i = parseISO(desde)
       const f = parseISO(hasta)
-      return { ini: i, fin: f >= i ? f : i, rangoLabel: `${formatFecha(desde)} – ${formatFecha(hasta)}` }
+      return { ini: i, fin: f >= i ? f : i, rangoLabel: `${formatFecha(desde)} – ${formatFecha(hasta)}`, rangoCorto: '' }
     }
     const lun = addDays(startOfWeek(today, { weekStartsOn: 1 }), offset * 7)
     const dom = addDays(lun, 6)
-    return { ini: lun, fin: dom, rangoLabel: `Semana ${format(lun, 'dd MMM')} – ${format(dom, 'dd MMM yyyy')}` }
+    return {
+      ini: lun, fin: dom,
+      rangoLabel: `Semana ${formatFechaCorta(lun)} – ${formatFechaCorta(dom)} ${format(dom, 'yyyy')}`,
+      rangoCorto: `${formatFechaCorta(lun)} – ${formatFechaCorta(dom)}`,
+    }
   }, [modo, offset, desde, hasta])
 
   const ready = !data.loading && data.people && data.schedules && data.attendance && grupos.length > 0
@@ -112,6 +120,16 @@ export default function ResumenSueldos({ cfg }) {
     faltas: d.faltas,
   })), [resumen])
 
+  // Retrasos y extras por día (lo que pidió ver): solo días con algo que mostrar.
+  const chartRetrasos = useMemo(() => (resumen?.porDia || [])
+    .filter(d => d.minTarde > 0 || d.minExtra > 0)
+    .map(d => ({
+      name: format(parseISO(d.dayStr), 'dd/MM'),
+      'Min tarde': d.minTarde,
+      'Min extra': d.minExtra,
+      aRevisar: d.aRevisar,
+    })), [resumen])
+
   const exportColumns = [
     { label: 'Empleado', accessor: 'fullName', width: 26 },
     { label: 'Cargo', accessor: 'position', width: 16 },
@@ -122,6 +140,7 @@ export default function ResumenSueldos({ cfg }) {
     { label: 'Fechas de faltas', accessor: r => r.faltas.map(x => x.dayStr).join(', '), width: 30 },
     { label: 'Días tarde', accessor: 'diasTarde', width: 10, numFmt: '0' },
     { label: 'Min tarde', accessor: 'minTarde', width: 10, numFmt: '0' },
+    { label: 'Min extra', accessor: 'minExtra', width: 10, numFmt: '0' },
     { label: 'Multa tardanza (Bs)', accessor: 'multaBs', width: 16, numFmt: '"Bs" #,##0.00' },
     { label: 'Días no-registro', accessor: 'diasNoRegistro', width: 14, numFmt: '0' },
     { label: 'Desc. no-registro (Bs)', accessor: 'descuentoNoRegistro', width: 18, numFmt: '"Bs" #,##0.00' },
@@ -129,6 +148,8 @@ export default function ResumenSueldos({ cfg }) {
     { label: 'Tarifa/h (Bs)', accessor: 'tarifa', width: 12, numFmt: '0.00' },
     { label: 'Bruto (Bs)', accessor: 'bruto', width: 12, numFmt: '"Bs" #,##0.00' },
     { label: 'Total a pagar (Bs)', accessor: 'totalAPagar', width: 16, numFmt: '"Bs" #,##0.00' },
+    { label: 'Días sin horario', accessor: 'diasSinHorario', width: 14, numFmt: '0' },
+    { label: 'Días a revisar', accessor: 'diasARevisar', width: 13, numFmt: '0' },
   ]
   const fileBase = `sueldos_${nombreLocal.replace(/[^a-z0-9]+/gi, '_')}_${format(ini, 'dd-MM-yyyy')}_${format(fin, 'dd-MM-yyyy')}`
 
@@ -142,7 +163,7 @@ export default function ResumenSueldos({ cfg }) {
         <h1 className="text-4xl font-display font-bold tracking-tightest mb-1 flex items-center gap-3">
           <Wallet size={30} className="text-accent" /> Sueldos
         </h1>
-        <p className="text-sm text-ink-300 capitalize">{nombreLocal} · {rangoLabel}</p>
+        <p className="text-sm text-ink-300">{nombreLocal} · {rangoLabel}</p>
       </header>
 
       {/* Filtros */}
@@ -170,10 +191,16 @@ export default function ResumenSueldos({ cfg }) {
             <input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="input text-sm w-auto" />
           </div>
         ) : (
+          // El rango va ENTRE las flechas: siempre se ve qué mes/semana estás mirando
           <div className="flex items-center gap-1">
-            <button onClick={() => setOffset(o => o - 1)} className="btn-ghost p-2"><ChevronLeft size={16} /></button>
-            <button onClick={() => setOffset(0)} className="btn-secondary text-xs">Hoy</button>
-            <button onClick={() => setOffset(o => o + 1)} disabled={offset >= 0} className="btn-ghost p-2 disabled:opacity-30"><ChevronRight size={16} /></button>
+            <button onClick={() => setOffset(o => o - 1)} className="btn-ghost p-2" title="Anterior"><ChevronLeft size={16} /></button>
+            <span className="text-xs font-semibold text-ink-50 px-2 min-w-[110px] text-center whitespace-nowrap">{rangoCorto}</span>
+            <button onClick={() => setOffset(o => o + 1)} disabled={offset >= 0} className="btn-ghost p-2 disabled:opacity-30" title="Siguiente"><ChevronRight size={16} /></button>
+            {offset !== 0 && (
+              <button onClick={() => setOffset(0)} className="btn-secondary text-xs whitespace-nowrap">
+                {modo === 'mes' ? 'Este mes' : modo === 'semana' ? 'Esta semana' : 'Hoy'}
+              </button>
+            )}
           </div>
         )}
         <select value={personId} onChange={e => { setPersonId(e.target.value); setExpandido(null) }} className="input text-sm w-auto">
@@ -196,6 +223,34 @@ export default function ResumenSueldos({ cfg }) {
         <div className="surface p-8 text-center text-ink-300">Sin empleados o datos en este rango.</div>
       ) : (
         <>
+          {/* Lo que no cuadra: sin horario cargado y días a revisar */}
+          {(resumen.empleadosSinHorario.length > 0 || t.diasARevisar > 0) && (
+            <div className="mb-6 rounded-xl border border-bad/40 bg-bad/5 p-4 flex items-start gap-3">
+              <AlertTriangle size={20} className="text-bad mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0 space-y-1.5">
+                {resumen.empleadosSinHorario.length > 0 && (
+                  <div>
+                    <span className="font-semibold text-bad text-sm">
+                      Sin horario cargado en este rango ({resumen.empleadosSinHorario.length}):
+                    </span>
+                    <span className="text-sm text-ink-200"> {resumen.empleadosSinHorario.join(', ')}</span>
+                    <p className="text-xs text-ink-300 mt-0.5">
+                      Sus días no se evalúan (no cuentan como falta ni tardanza) y solo se les pagan las horas fichadas.
+                      Carga la planilla del mes en la pestaña <span className="text-ink-100 font-medium">Turnos</span> del local,
+                      o define su horario base en <span className="text-ink-100 font-medium">Empleados</span>.
+                    </p>
+                  </div>
+                )}
+                {t.diasARevisar > 0 && (
+                  <p className="text-sm text-ink-200">
+                    <span className="font-semibold text-bad">{t.diasARevisar} día{t.diasARevisar > 1 ? 's' : ''} con datos a revisar</span>
+                    {' '}— aparecen en rojo con el motivo dentro del detalle de cada empleado.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <Kpi
@@ -214,9 +269,9 @@ export default function ResumenSueldos({ cfg }) {
             />
             <Kpi
               icon={Timer}
-              label="Tardanzas"
+              label="Tardanzas y extras"
               value={`${t.diasTarde} días · ${t.minTarde} min`}
-              sub={`−${formatBs(t.multaBs)} en multas`}
+              sub={`−${formatBs(t.multaBs)} en multas${t.minExtra > 0 ? ` · +${t.minExtra} min extra` : ''}`}
               subClass={t.multaBs > 0 ? 'text-bad' : 'text-ink-400'}
             />
             <Kpi
@@ -224,7 +279,7 @@ export default function ResumenSueldos({ cfg }) {
               label="Total a pagar"
               value={formatBs(t.totalAPagar)}
               valueClass="text-accent"
-              sub={`bruto ${formatBs(t.bruto)} − desc. ${formatBs(t.descuentoTardanza + t.descuentoNoRegistro)}`}
+              sub={`bruto ${formatBs(t.bruto)} − descuentos ${formatBs(t.descuentoAplicado)}`}
             />
           </div>
 
@@ -262,6 +317,28 @@ export default function ResumenSueldos({ cfg }) {
             )}
           </div>
 
+          {/* Retrasos y extras por día */}
+          {chartRetrasos.length > 0 && (
+            <div className="mb-6">
+              <ChartCard
+                title="Retrasos y minutos extra por día"
+                subtitle={`${personId ? empleadosLocal.find(p => p.id === personId)?.fullName : 'todo el local'} · solo días con retraso o extras`}
+              >
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={chartRetrasos} barGap={2}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis dataKey="name" stroke="#a1a1aa" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                    <YAxis stroke="#a1a1aa" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={34} unit="m" />
+                    <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(255,255,255,0.03)' }} formatter={v => `${v} min`} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="Min tarde" fill={COLOR_TARDE} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+                    <Bar dataKey="Min extra" fill={COLOR_EXTRA} radius={[4, 4, 0, 0]} maxBarSize={18} isAnimationActive={false} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            </div>
+          )}
+
           {/* Tabla principal */}
           <div className="surface p-5 grain">
             <h3 className="font-display font-semibold text-lg mb-4">Detalle por empleado</h3>
@@ -269,7 +346,7 @@ export default function ResumenSueldos({ cfg }) {
               <table className="w-full min-w-[1050px] text-sm">
                 <thead>
                   <tr className="text-left">
-                    {['Empleado', 'H. prog.', 'H. trab.', '% Cumpl.', 'Días tarde', 'Min tarde', 'Multa', 'Faltas', 'No-reg.', 'H. extra', 'Bruto', 'Total a pagar', ''].map((h, i) => (
+                    {['Empleado', 'H. prog.', 'H. trab.', '% Cumpl.', 'Días tarde', 'Min tarde', 'Min extra', 'Multa', 'Faltas', 'No-reg.', 'H. extra', 'Bruto', 'Total a pagar', ''].map((h, i) => (
                       <th key={i} className={`text-xs uppercase tracking-wider text-ink-300 pb-3 font-medium ${i > 0 ? 'text-right pl-2' : ''}`}>{h}</th>
                     ))}
                   </tr>
@@ -296,6 +373,7 @@ export default function ResumenSueldos({ cfg }) {
                     <td className="text-right py-3">{t.cumplimiento == null ? '—' : `${t.cumplimiento}%`}</td>
                     <td className="text-right py-3">{t.diasTarde}</td>
                     <td className="text-right py-3">{t.minTarde}</td>
+                    <td className="text-right py-3 text-accent-400">{t.minExtra || '—'}</td>
                     <td className="text-right py-3 text-bad">{t.multaBs > 0 ? `−${formatBs(t.multaBs)}` : '—'}</td>
                     <td className="text-right py-3 font-bold text-bad">{t.faltas || '—'}</td>
                     <td className="text-right py-3 text-bad">{t.descuentoNoRegistro > 0 ? `−${formatBs(t.descuentoNoRegistro)}` : '—'}</td>
@@ -360,13 +438,25 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal }) {
         <td className="py-3">
           <div className="flex items-center gap-2.5">
             <Avatar name={f.fullName} id={f.personId} size="sm" />
-            <div>
-              <div className="font-medium text-ink-50">{f.fullName}</div>
-              <div className="text-xs text-ink-300">{f.position}</div>
+            <div className="min-w-0">
+              <div className="font-medium text-ink-50 flex items-center gap-1.5">
+                {f.fullName}
+                {f.diasARevisar > 0 && (
+                  <span className="badge bg-bad/15 text-bad text-[10px] whitespace-nowrap" title="Días con datos a revisar — abre el detalle">
+                    {f.diasARevisar} a revisar
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-ink-300">
+                {f.position}
+                {f.horasProgramadas === 0 && f.diasSinHorario > 0 && (
+                  <span className="text-bad"> · sin horario cargado</span>
+                )}
+              </div>
             </div>
           </div>
         </td>
-        <td className="text-right py-3 font-mono text-ink-200">{formatHoras(f.horasProgramadas)}</td>
+        <td className="text-right py-3 font-mono text-ink-200">{f.horasProgramadas > 0 ? formatHoras(f.horasProgramadas) : <span className="text-bad" title="Sin horario cargado en este rango">—</span>}</td>
         <td className="text-right py-3 font-mono font-semibold text-ink-50">{formatHoras(f.horasTrabajadas)}</td>
         <td className="text-right py-3">
           {f.cumplimiento == null ? <span className="text-ink-400">—</span> : (
@@ -375,6 +465,7 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal }) {
         </td>
         <td className="text-right py-3">{f.diasTarde || <span className="text-ink-400">—</span>}</td>
         <td className="text-right py-3">{f.minTarde || <span className="text-ink-400">—</span>}</td>
+        <td className="text-right py-3">{f.minExtra > 0 ? <span className="text-accent-400">{f.minExtra}</span> : <span className="text-ink-400">—</span>}</td>
         <td className="text-right py-3">{f.multaBs > 0 ? <span className="text-bad">−{formatBs(f.multaBs)}</span> : <span className="text-ink-400">—</span>}</td>
         <td className="text-right py-3">
           {f.faltas.length > 0
@@ -395,7 +486,7 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal }) {
       </tr>
       {abierto && (
         <tr className="border-t border-white/5">
-          <td colSpan={13} className="py-3 px-2 bg-bg-700/20">
+          <td colSpan={14} className="py-3 px-2 bg-bg-700/20">
             {f.faltas.length > 0 && (
               <div className="mb-3 rounded-lg border border-bad/30 bg-bad/5 px-3 py-2 text-sm">
                 <span className="font-semibold text-bad">No vino ({f.faltas.length}):</span>{' '}
@@ -405,7 +496,7 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal }) {
               </div>
             )}
             <div className="overflow-x-auto scrollbar-thin">
-              <table className="w-full text-xs min-w-[760px]">
+              <table className="w-full text-xs min-w-[900px]">
                 <thead>
                   <tr className="text-left text-ink-400 uppercase tracking-wider">
                     <th className="pb-2 font-medium">Fecha</th>
@@ -415,22 +506,31 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal }) {
                     <th className="pb-2 font-medium text-right">Min tarde</th>
                     <th className="pb-2 font-medium text-right">Prog. salida</th>
                     <th className="pb-2 font-medium text-right">Salida real</th>
+                    <th className="pb-2 font-medium text-right">Min extra</th>
                     <th className="pb-2 font-medium text-right">Horas</th>
+                    <th className="pb-2 font-medium pl-3">Comentario</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {f.cells.filter(c => !(c.state === 'idle' && !c.falto)).map(c => {
+                  {f.cells.filter(c => !(c.state === 'idle' && !c.falto && !c.sinHorario)).map(c => {
                     const row = celdaToRow(f.empleado, c, nombreLocal)
+                    const comentario = comentarioAnomalia(c)
+                    // Rojo = algo no cuadra o no vino: falta, anomalía o día sin horario.
+                    const enRojo = c.falto || c.anomalia
                     return (
-                      <tr key={c.dayStr} className={`border-t border-white/5 ${c.falto ? 'bg-bad/5' : ''}`}>
-                        <td className="py-1.5 text-ink-200">{formatFecha(c.dayStr)}</td>
-                        <td className={`py-1.5 ${c.falto ? 'text-bad font-semibold' : c.mins > 0 ? 'text-warn' : 'text-ink-200'}`}>{row.Estado}</td>
+                      <tr key={c.dayStr} className={`border-t border-white/5 ${enRojo ? 'bg-bad/5' : ''}`}>
+                        <td className={`py-1.5 text-ink-200 ${enRojo ? 'border-l-2 border-bad pl-1.5' : ''}`}>{formatFecha(c.dayStr)}</td>
+                        <td className={`py-1.5 ${c.falto ? 'text-bad font-semibold' : c.anomalia ? 'text-bad' : c.sinHorario ? 'text-ink-400' : c.mins > 0 ? 'text-warn' : 'text-ink-200'}`}>{row.Estado}</td>
                         <td className="py-1.5 text-right font-mono text-ink-300">{row['Programado entrada'] || '—'}</td>
                         <td className="py-1.5 text-right font-mono text-ink-100">{row['Entrada real'] || '—'}</td>
-                        <td className="py-1.5 text-right">{row['Min tarde'] ? <span className="text-warn">+{row['Min tarde']}</span> : '—'}</td>
+                        <td className="py-1.5 text-right">{row['Min tarde'] ? <span className={c.condonada ? 'text-ink-400 line-through' : 'text-warn'}>+{row['Min tarde']}</span> : '—'}</td>
                         <td className="py-1.5 text-right font-mono text-ink-300">{row['Programado salida'] || '—'}</td>
                         <td className="py-1.5 text-right font-mono text-ink-100">{row['Salida real'] || '—'}</td>
+                        <td className="py-1.5 text-right">{c.minExtraComputado > 0 && !c.anomalia ? <span className="text-accent-400">+{c.minExtraComputado}</span> : '—'}</td>
                         <td className="py-1.5 text-right font-mono">{row['Horas trabajadas'] || '—'}</td>
+                        <td className={`py-1.5 pl-3 ${enRojo || c.sinHorario ? 'text-bad' : 'text-ink-400'}`}>
+                          {comentario || (c.condonada ? 'Tardanza condonada — no se cobra multa.' : '')}
+                        </td>
                       </tr>
                     )
                   })}

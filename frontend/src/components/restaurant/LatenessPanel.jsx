@@ -4,7 +4,7 @@ import { Check, X, FileText, Clock, Calendar, CalendarDays, CalendarRange, Chevr
 import { toast } from 'sonner'
 import { Avatar } from '../ui/Avatar'
 import { tardanzasConCondonacion } from '../../utils/stats'
-import { formatBs, formatFecha, formatHora } from '../../utils/format'
+import { formatBs, formatFecha, formatHora, formatFechaCorta, formatMesAno, formatDiaLargo } from '../../utils/format'
 import { exportCSV, exportExcel } from '../../utils/export'
 
 const MODOS = [
@@ -26,16 +26,16 @@ export function LatenessPanel({ group, empleados, attendance, schedules, cfg }) 
     const today = new Date()
     if (modo === 'dia') {
       const d = addDays(today, offset)
-      return { ini: d, fin: d, rangoLabel: format(d, 'EEEE dd MMMM yyyy') }
+      return { ini: d, fin: d, rangoLabel: formatDiaLargo(d) }
     }
     if (modo === 'mes' || modo === 'resumen') {
       const m = addMonths(startOfMonth(today), offset)
-      return { ini: startOfMonth(m), fin: endOfMonth(m), rangoLabel: format(m, 'MMMM yyyy') }
+      return { ini: startOfMonth(m), fin: endOfMonth(m), rangoLabel: formatMesAno(m) }
     }
     // semana
     const lun = addDays(startOfWeek(today, { weekStartsOn: 1 }), offset * 7)
     const dom = addDays(lun, 6)
-    return { ini: lun, fin: dom, rangoLabel: `Semana ${format(lun, 'dd MMM')} – ${format(dom, 'dd MMM')}` }
+    return { ini: lun, fin: dom, rangoLabel: `Semana ${formatFechaCorta(lun)} – ${formatFechaCorta(dom)}` }
   }, [modo, offset])
 
   const tardanzas = useMemo(() => {
@@ -213,7 +213,9 @@ export function LatenessPanel({ group, empleados, attendance, schedules, cfg }) 
             </div>
             <div className="flex items-center gap-1">
               <button onClick={() => ir(-1)} className="btn-ghost p-2"><ChevronLeft size={16} /></button>
-              <button onClick={hoy} className="btn-secondary text-xs">Hoy</button>
+              <button onClick={hoy} className="btn-secondary text-xs whitespace-nowrap">
+                {modo === 'mes' || modo === 'resumen' ? 'Este mes' : modo === 'semana' ? 'Esta semana' : 'Hoy'}
+              </button>
               <button onClick={() => ir(1)} disabled={offset >= 0} className="btn-ghost p-2 disabled:opacity-30"><ChevronRight size={16} /></button>
             </div>
             {(modo === 'resumen' ? resumen.length : tardanzas.length) > 0 && (

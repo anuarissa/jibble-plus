@@ -6,7 +6,7 @@ import { format, addDays, startOfMonth, endOfMonth, startOfWeek } from 'date-fns
 import { tablaMensual, tablaSemanal, tardanzasConCondonacion, attendanceEnRango, groupByPerson,
          celdaToRow, EXPORT_COLUMNS_ASISTENCIA, extrasYRetrasoDeCells } from './stats'
 import { planillaLocal } from './payroll'
-import { formatHora } from './format'
+import { formatHora, formatMesAno } from './format'
 import { exportExcelMultiSheet } from './export'
 
 export function descargarReporteMensual({
@@ -17,7 +17,7 @@ export function descargarReporteMensual({
   const ini = startOfMonth(mes)
   const fin = endOfMonth(mes)
   const monthKey = format(mes, 'yyyy-MM')
-  const monthLabel = format(mes, "MMMM 'de' yyyy").replace(/^\w/, c => c.toUpperCase())
+  const monthLabel = formatMesAno(mes)
   const rangoLabel = `${format(ini, 'dd MMM')} – ${format(fin, 'dd MMM yyyy')}`
 
   // === DATOS BRUTOS DEL MES ===
@@ -47,16 +47,20 @@ export function descargarReporteMensual({
     const tablaSem = tablaSemanal({ empleados, attendance, schedules, ini: semanaIni,
       condonaciones, turnos, personOverrides })
     const horasExtraPorPersona = {}, horasPagablesPorPersona = {}, descuentoNoRegistroPorPersona = {}, diasNoRegistroPorPersona = {}
+    const multaBsPorPersona = {}, minTardePorPersona = {}
     for (const fila of tablaSem.filas) {
       const agg = extrasYRetrasoDeCells(fila.cells)
       horasExtraPorPersona[fila.empleado.id] = agg.horasExtra
       horasPagablesPorPersona[fila.empleado.id] = agg.horasPagables
       descuentoNoRegistroPorPersona[fila.empleado.id] = agg.descuentoNoRegistro
       diasNoRegistroPorPersona[fila.empleado.id] = agg.diasNoRegistro
+      multaBsPorPersona[fila.empleado.id] = agg.multaBs
+      minTardePorPersona[fila.empleado.id] = agg.minTarde
     }
     const planSem = planillaLocal(empleadosConTarifa, groupByPerson(fichajesSem), groupByPerson(tardanzasSem), {
       multiplicadorExtra: cfg.config.settings.multiplicadorExtra,
       horasExtraPorPersona, horasPagablesPorPersona, descuentoNoRegistroPorPersona, diasNoRegistroPorPersona,
+      multaBsPorPersona, minTardePorPersona,
     })
     for (const fila of planSem.filas) {
       if (!acc[fila.personId]) {
