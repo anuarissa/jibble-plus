@@ -12,4 +12,7 @@ INFORME-EMPLEADOS-*.md
 backend/.env
 frontend/.env
 
+# Capturas de validación (se regeneran con screenshot.mjs; pesan y no aportan al repo)
+temporary screenshots/
+
 .vercel
