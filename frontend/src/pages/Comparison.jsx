@@ -16,7 +16,7 @@ const TOOLTIP_STYLE = {
 }
 
 export default function Comparison({ cfg }) {
-  const data = useJibble(cfg.personOverrides)
+  const data = useJibble(cfg.personOverrides, cfg.config.locales)
   const ready = !data.loading && data.groups
 
   const stats = useMemo(() => {

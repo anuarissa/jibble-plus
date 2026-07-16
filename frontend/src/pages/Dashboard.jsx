@@ -12,12 +12,15 @@ import { format } from 'date-fns'
 
 export default function Dashboard({ cfg }) {
   const ws = useActiveWorkspace()
-  const data = useJibble(cfg.personOverrides)
+  const data = useJibble(cfg.personOverrides, cfg.config.locales)
   const alerts = useAlerts({
     active: data.active,
     schedules: data.schedules,
     people: data.people,
     attendance: data.attendance,
+    turnos: cfg.turnos,
+    personOverrides: cfg.personOverrides,
+    locales: cfg.config.locales,
   })
 
   const ready = !data.loading && data.groups && data.people && data.schedules && data.attendance

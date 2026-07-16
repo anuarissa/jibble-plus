@@ -1,15 +1,15 @@
 import { useJibble } from '../hooks/useJibble'
-import { Trash2, KeyRound, RefreshCw, AlertTriangle, Users, RotateCcw, LogOut } from 'lucide-react'
+import { Trash2, KeyRound, RefreshCw, AlertTriangle, Users, RotateCcw, LogOut, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { clearCache, logout } from '../api/jibble'
 import { Avatar } from '../components/ui/Avatar'
-import { EMPLOYEE_OVERRIDES } from '../config/employees'
+import { EMPLOYEE_OVERRIDES, localOculto } from '../config/employees'
 
 const COLORS = ['#ff6b35', '#dc2626', '#0ea5e9', '#eab308', '#a855f7', '#10b981', '#ec4899', '#f97316']
 const EMOJIS = ['🍔', '🍕', '🍗', '🌮', '🥡', '🍣', '🥪', '🍝', '🥗', '🍦', '☕', '🥐']
 
 export default function Settings({ cfg }) {
-  const data = useJibble(cfg.personOverrides)
+  const data = useJibble(cfg.personOverrides, cfg.config.locales)
 
   function reconectar() {
     clearCache()
@@ -38,7 +38,7 @@ export default function Settings({ cfg }) {
       >
         <PersonGroupAssign
           people={data.people}
-          groups={data.groups}
+          groups={data.groupsAll}
           locales={cfg.config.locales}
           personOverrides={cfg.personOverrides}
           onAssign={cfg.setPersonGroup}
@@ -47,23 +47,33 @@ export default function Settings({ cfg }) {
         />
       </Section>
 
-      <Section title="Tus locales" subtitle="Renombra, cambia color o emoji de cada local">
+      <Section title="Tus locales" subtitle="Renombra, cambia color o emoji de cada local. El ojo oculta el local de Dashboard, Comparativo e Historial (sus datos no se borran).">
         <div className="space-y-3">
-          {data.groups?.map(g => {
+          {data.groupsAll?.map(g => {
             const cur = cfg.config.locales[g.id] || {}
+            const oculto = localOculto(g.id, cfg.config.locales)
             return (
-              <div key={g.id} className="surface-elevated p-4">
+              <div key={g.id} className={`surface-elevated p-4 transition ${oculto ? 'opacity-50' : ''}`}>
                 <div className="flex gap-3 items-start">
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0" style={{ background: cur.color || g.color }}>
                     {cur.emoji || g.emoji}
                   </div>
                   <div className="flex-1 grid gap-2">
-                    <input
-                      type="text"
-                      value={cur.name || g.name}
-                      onChange={e => cfg.renombrarLocal(g.id, { name: e.target.value })}
-                      className="input"
-                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={cur.name || g.name}
+                        onChange={e => cfg.renombrarLocal(g.id, { name: e.target.value })}
+                        className="input flex-1"
+                      />
+                      <button
+                        onClick={() => cfg.renombrarLocal(g.id, { hidden: !oculto })}
+                        className={`btn-ghost p-2 shrink-0 ${oculto ? 'text-warn' : 'text-ink-300'}`}
+                        title={oculto ? 'Local oculto — click para mostrarlo de nuevo' : 'Ocultar este local de las vistas'}
+                      >
+                        {oculto ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                     <div className="flex flex-wrap gap-1.5">
                       {COLORS.map(c => (
                         <button key={c} onClick={() => cfg.renombrarLocal(g.id, { color: c })}

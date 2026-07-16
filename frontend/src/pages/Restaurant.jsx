@@ -21,7 +21,7 @@ export default function Restaurant({ cfg }) {
   const { groupId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const data = useJibble(cfg.personOverrides)
+  const data = useJibble(cfg.personOverrides, cfg.config.locales)
   // tab inicial puede venir del state de navegación (ej: desde Empleados → "Editar turnos")
   const [tab, setTab] = useState(location.state?.tab || 'asistencia')
 
@@ -38,7 +38,7 @@ export default function Restaurant({ cfg }) {
     )
   }
 
-  const group = data.groups?.find(g => g.id === groupId)
+  const group = data.groupsAll?.find(g => g.id === groupId)
   if (!group) return <Navigate to="/" replace />
 
   const customConfig = cfg.config.locales[groupId]

@@ -9,7 +9,7 @@ import { formatBs, formatHoras } from '../utils/format'
 import { EMPLOYEE_OVERRIDES } from '../config/employees'
 
 export default function Empleados({ cfg }) {
-  const data = useJibble(cfg.personOverrides)
+  const data = useJibble(cfg.personOverrides, cfg.config.locales)
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState(null)
   const [showHidden, setShowHidden] = useState(false)
@@ -34,9 +34,9 @@ export default function Empleados({ cfg }) {
 
   const groupName = (id) => {
     if (!id) return <span className="text-ink-400 italic">Sin local</span>
-    return cfg.config.locales[id]?.name || data.groups.find(g => g.id === id)?.name || id
+    return cfg.config.locales[id]?.name || data.groupsAll.find(g => g.id === id)?.name || id
   }
-  const groupColor = (id) => cfg.config.locales[id]?.color || data.groups.find(g => g.id === id)?.color || '#6b6b73'
+  const groupColor = (id) => cfg.config.locales[id]?.color || data.groupsAll.find(g => g.id === id)?.color || '#6b6b73'
 
   function unhide(personId, fullName) {
     cfg.setPersonHidden(personId, false)
@@ -158,7 +158,7 @@ export default function Empleados({ cfg }) {
       {editing && (
         <EditEmployeeModal
           persona={editing}
-          groups={data.groups}
+          groups={data.groupsAll}
           locales={cfg.config.locales}
           cfg={cfg}
           onClose={() => setEditing(null)}

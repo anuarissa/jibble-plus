@@ -1,16 +1,23 @@
 // Genera alertas en tiempo real a partir de los datos de Jibble.
 // 🔴 Empleado fichado > 10h sin salir
 // 🟡 Apertura sin fichaje 30+ min después del horario
-// 🟢 Todos del turno ya ficharon (informativa)
+//
+// La hora esperada del noshow usa el MISMO resolver que las tardanzas
+// (turno semanal > default por día del empleado > schedule real), así la alerta
+// dice la hora verdadera del turno y no el default genérico 09:00.
+// Locales ocultos (config.locales[id].hidden) no generan alertas.
 
 import { useMemo } from 'react'
+import { format } from 'date-fns'
+import { buildStartTimeResolver } from '../utils/stats'
+import { localOculto } from '../config/employees'
 
-export function useAlerts({ active, schedules, people, attendance }) {
+export function useAlerts({ active, schedules, people, attendance, turnos, personOverrides, locales }) {
   return useMemo(() => {
     if (!active || !schedules || !people || !attendance) return []
     const alerts = []
     const ahora = new Date()
-    const todayStr = ahora.toISOString().slice(0, 10)
+    const todayStr = format(ahora, 'yyyy-MM-dd') // fecha LOCAL (toISOString corría el día en UTC-4)
 
     // 🔴 Activos > 10h
     for (const a of active) {
@@ -30,17 +37,19 @@ export function useAlerts({ active, schedules, people, attendance }) {
       }
     }
 
-    // 🟡 Apertura sin fichaje 30 min después
-    const dow = ahora.getDay() === 0 ? 7 : ahora.getDay()
+    // 🟡 Apertura sin fichaje 30 min después del turno real.
+    // Se excluyen los schedules default (isDefault) — sin horario real conocido
+    // no se puede afirmar que "debió fichar".
+    const schedulesReales = schedules.filter(s => !s.isDefault)
+    const resolver = buildStartTimeResolver(turnos || {}, schedulesReales, personOverrides || {})
     const todaysAttendanceByPerson = new Map(
       attendance.filter(x => x.date === todayStr).map(x => [x.personId, x])
     )
 
-    for (const sched of schedules) {
-      if (!sched.daysOfWeek.includes(dow)) continue
-      const persona = people.find(p => p.id === sched.personId)
-      if (!persona) continue
-      const [sh, sm] = sched.startTime.split(':').map(Number)
+    for (const persona of people) {
+      const startTime = resolver({ personId: persona.id, date: todayStr, clockIn: null })
+      if (!startTime || startTime === 'OFF') continue
+      const [sh, sm] = startTime.split(':').map(Number)
       const programada = new Date(ahora)
       programada.setHours(sh, sm, 0, 0)
       const elapsedMin = (ahora - programada) / 60000
@@ -50,13 +59,15 @@ export function useAlerts({ active, schedules, people, attendance }) {
           id: `noshow_${persona.id}`,
           severity: 'warn',
           title: 'Sin fichaje al inicio del turno',
-          desc: `${persona.fullName} debió fichar a las ${sched.startTime} (${Math.round(elapsedMin)} min de retraso)`,
+          desc: `${persona.fullName} debió fichar a las ${startTime} (${Math.round(elapsedMin)} min de retraso)`,
           personId: persona.id,
           groupId: persona.groupId,
         })
       }
     }
 
-    return alerts.sort((a, b) => (a.severity === 'bad' ? -1 : 1))
-  }, [active, schedules, people, attendance])
+    return alerts
+      .filter(a => !a.groupId || !localOculto(a.groupId, locales))
+      .sort((a, b) => (a.severity === 'bad' ? -1 : 1))
+  }, [active, schedules, people, attendance, turnos, personOverrides, locales])
 }

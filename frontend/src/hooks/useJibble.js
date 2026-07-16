@@ -5,7 +5,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { format, addDays } from 'date-fns'
 import * as jibble from '../api/jibble'
-import { getScheduleForPerson, shouldSkipPerson, resolveGroupId, resolveCargo, EMPLOYEE_OVERRIDES } from '../config/employees'
+import { getScheduleForPerson, shouldSkipPerson, resolveGroupId, resolveCargo, EMPLOYEE_OVERRIDES, esPersonaDummy, localOculto } from '../config/employees'
 import { useActiveWorkspace } from './useActiveWorkspace'
 
 // Skip hardcoded (Owner) — siempre filtrar, no editable por usuario
@@ -15,7 +15,7 @@ function EMPLOYEE_HARDCODED_SKIP(personId) {
 
 const POLL_MS = 5 * 60 * 1000 // 5 min
 
-export function useJibble(personOverrides = {}) {
+export function useJibble(personOverrides = {}, locales = {}) {
   const { active: activeWs } = useActiveWorkspace()
   const [raw, setRaw] = useState({
     groups: null,
@@ -64,14 +64,34 @@ export function useJibble(personOverrides = {}) {
     return () => clearInterval(id)
   }, [fetchAll])
 
+  // GROUPS_ALL: grupos de la API del ws activo ∪ locales configurados que la API
+  // no traiga (ej. cuenta secundaria sin grupos en Jibble → se sintetizan desde
+  // config.locales para que el local siga existiendo en toda la app).
+  const groupsAll = useMemo(() => {
+    if (!raw.groups) return null // preservar gate de loading
+    const byId = new Set(raw.groups.map(g => g.id))
+    const synth = Object.entries(locales || {})
+      .filter(([id, l]) => !byId.has(id) && l?.name)
+      .map(([id, l]) => ({ id, name: l.name, synthetic: true }))
+    return [...raw.groups, ...synth]
+  }, [raw.groups, locales])
+
+  // GROUPS: los visibles (sin locales ocultos por el usuario o por default) — lo que usa la app.
+  const groups = useMemo(
+    () => (groupsAll ? groupsAll.filter(g => !localOculto(g.id, locales)) : null),
+    [groupsAll, locales]
+  )
+
   // PEOPLE_ALL: incluye los hidden, sin filtrar (para pantalla Empleados)
   const peopleAll = useMemo(() => {
     if (!raw.peopleRaw) return null
     return raw.peopleRaw
-      .filter(p => !(EMPLOYEE_HARDCODED_SKIP(p.id))) // solo el Owner se filtra siempre
+      .filter(p => !(EMPLOYEE_HARDCODED_SKIP(p.id))) // el Owner se filtra siempre
+      .filter(p => !esPersonaDummy(p.fullName)) // cuentas dummy del local (ej. "Sbarro Huper")
       .map(p => ({
         ...p,
-        groupId: resolveGroupId(p.id, p.groupId, personOverrides),
+        // __ws = workspace de origen (lo etiqueta el backend al fusionar cuentas)
+        groupId: resolveGroupId(p.id, p.groupId, personOverrides, p.__ws),
         position: resolveCargo(p.id, p.position) || p.position,
         hidden: !!personOverrides[p.id]?.hidden,
       }))
@@ -109,7 +129,8 @@ export function useJibble(personOverrides = {}) {
   }, [raw.active, people])
 
   return {
-    groups: raw.groups,
+    groups,        // visibles: API ∪ config.locales, sin locales ocultos
+    groupsAll,     // igual pero CON ocultos — para Settings y lookups por id
     people,        // sin Owner ni hidden — la que usa la app activa
     peopleAll,     // sin Owner pero CON hidden marcados — para pantalla Empleados
     schedules,

@@ -145,8 +145,47 @@ export function getScheduleForPerson(personId, jibbleSchedule, userOverrides = {
   }
   const override = EMPLOYEE_OVERRIDES[personId]
   if (override?.schedule) return { personId, ...override.schedule }
-  if (jibbleSchedule) return jibbleSchedule
-  return { personId, ...DEFAULT_SCHEDULE }
+  // isDefault: marca que es un horario genérico (no configurado a propósito) — las
+  // alertas lo excluyen para no inventar "debió fichar a las 09:00". Jibble asigna
+  // a TODOS un work schedule 09:00-18:00 por defecto, así que ese patrón también
+  // cuenta como genérico.
+  if (jibbleSchedule) {
+    const esGenericoJibble = jibbleSchedule.startTime === DEFAULT_SCHEDULE.startTime
+      && jibbleSchedule.endTime === DEFAULT_SCHEDULE.endTime
+    return esGenericoJibble ? { ...jibbleSchedule, isDefault: true } : jibbleSchedule
+  }
+  return { personId, ...DEFAULT_SCHEDULE, isDefault: true }
+}
+
+// Local por defecto según el workspace de origen de la persona.
+// El workspace B es la cuenta Jibble "SBARRO HUPER" (sin grupos propios):
+// toda su gente pertenece a ese local salvo override manual.
+export const WORKSPACE_DEFAULT_GROUP = {
+  B: GROUP_IDS.SBARRO_HUPER,
+}
+
+// Usuarios "dummy" de Jibble (cuentas del local, no personas reales) — nunca
+// aparecen en la app. Se matchean por nombre normalizado porque su personId
+// varía según el workspace.
+const DUMMY_PERSON_NAMES = new Set(['sbarro huper'])
+export function esPersonaDummy(fullName) {
+  return DUMMY_PERSON_NAMES.has(String(fullName || '').trim().toLowerCase())
+}
+
+// Locales ocultos por defecto en todas las vistas (decisión Anuar Jul-2026:
+// el panel principal muestra solo Sbarro América y Sbarro Huper). El toggle
+// del ojo en Configuración puede revertirlo (hidden:false explícito gana).
+const DEFAULT_HIDDEN_GROUPS = new Set([
+  GROUP_IDS.SOS_POLLO,
+  GROUP_IDS.OFICINAS,
+  GROUP_IDS.TUESDAY,
+])
+
+// Resuelve si un local está oculto: flag explícito del usuario > default.
+export function localOculto(groupId, locales = {}) {
+  const flag = locales?.[groupId]?.hidden
+  if (flag !== undefined) return !!flag
+  return DEFAULT_HIDDEN_GROUPS.has(groupId)
 }
 
 // True si la persona NO debe aparecer en planillas/Dashboard:
@@ -162,11 +201,12 @@ export function shouldSkipPerson(personId, userOverrides = {}) {
 // 1) override del usuario en localStorage (personGroupOverrides)
 // 2) override hardcodeado en EMPLOYEE_OVERRIDES.groupId
 // 3) lo que viene de Jibble (puede ser null en plan gratis)
-export function resolveGroupId(personId, jibbleGroupId, userOverrides = {}) {
+// 4) default por workspace de origen (ej. todo el ws B → SBARRO HUPER)
+export function resolveGroupId(personId, jibbleGroupId, userOverrides = {}, ws = undefined) {
   if (userOverrides[personId]?.groupId) return userOverrides[personId].groupId
   const hard = EMPLOYEE_OVERRIDES[personId]?.groupId
   if (hard) return hard
-  return jibbleGroupId || null
+  return jibbleGroupId || WORKSPACE_DEFAULT_GROUP[ws] || null
 }
 
 // Resuelve cargo final: override > Jibble position > vacío

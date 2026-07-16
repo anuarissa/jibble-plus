@@ -5,12 +5,13 @@ import { useJibble } from '../hooks/useJibble'
 import { Skeleton } from '../components/ui/Skeleton'
 import { Avatar } from '../components/ui/Avatar'
 import { detectarTardanza } from '../utils/lateness'
+import { localOculto } from '../config/employees'
 import { formatFecha, formatHora } from '../utils/format'
 import { exportCSV, exportExcel } from '../utils/export'
 import * as jibble from '../api/jibble'
 
 export default function History({ cfg }) {
-  const data = useJibble(cfg.personOverrides)
+  const data = useJibble(cfg.personOverrides, cfg.config.locales)
   const [from, setFrom] = useState(format(addDays(new Date(), -14), 'yyyy-MM-dd'))
   const [to, setTo] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [groupId, setGroupId] = useState('')
@@ -48,13 +49,14 @@ export default function History({ cfg }) {
   const rows = useMemo(() => {
     if (!ready) return []
     return (rangeAttendance || [])
+      .filter(a => !a.groupId || !localOculto(a.groupId, cfg.config.locales))
       .filter(a => !groupId || a.groupId === groupId)
       .filter(a => !personId || a.personId === personId)
       .map(a => {
         const sched = data.schedules.find(s => s.personId === a.personId)
         const tardanza = detectarTardanza(a, sched)
         const persona = data.people.find(p => p.id === a.personId)
-        const grupo = data.groups.find(g => g.id === a.groupId)
+        const grupo = data.groupsAll.find(g => g.id === a.groupId)
         return {
           ...a,
           fullName: persona?.fullName || 'Desconocido',

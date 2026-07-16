@@ -137,10 +137,13 @@ export function statsGlobales({ groups, ...rest }) {
     planilla += s.planillaSemana
     totalFich += s.totalEmpleados // aproximación; mejor recalcular abajo
   }
-  // Recalc puntualidad global desde tardanzas globales
+  // Recalc puntualidad global desde tardanzas globales — solo de los locales visibles,
+  // coherente con el resto de los KPIs (que iteran `groups` ya filtrado).
+  const visibleIds = new Set((groups || []).map(g => g.id))
   const { ini, fin } = semanaActual()
   const tardanzasGlob = tardanzasConCondonacion(rest.attendance, rest.schedules, rest.condonaciones, ini, fin, rest.turnos, rest.personOverrides)
-  const semana = attendanceEnRango(rest.attendance, ini, fin)
+    .filter(t => visibleIds.has(t.groupId))
+  const semana = attendanceEnRango(rest.attendance, ini, fin).filter(a => visibleIds.has(a.groupId))
   const totalFichG = semana.length
   const conTard = tardanzasGlob.filter(t => !t.condonada).length
   const punt = totalFichG > 0 ? Math.round(((totalFichG - conTard) / totalFichG) * 100) : 100
