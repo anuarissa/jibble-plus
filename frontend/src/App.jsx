@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard'
 import Restaurant from './pages/Restaurant'
 import Empleados from './pages/Empleados'
 import Comparison from './pages/Comparison'
+import ResumenSueldos from './pages/ResumenSueldos'
 import History from './pages/History'
 import Settings from './pages/Settings'
 import { getSessionToken, getHealth } from './api/jibble'
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="/restaurante/:groupId" element={<Restaurant cfg={cfg} />} />
         <Route path="/empleados" element={<Empleados cfg={cfg} />} />
         <Route path="/comparativo" element={<Comparison cfg={cfg} />} />
+        <Route path="/sueldos" element={<ResumenSueldos cfg={cfg} />} />
         <Route path="/historial" element={<History cfg={cfg} />} />
         <Route path="/configuracion" element={<Settings cfg={cfg} />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, BarChart3, History, Settings as SettingsIcon, Activity, ChevronLeft, Users } from 'lucide-react'
+import { LayoutDashboard, BarChart3, History, Settings as SettingsIcon, Activity, ChevronLeft, Users, Wallet } from 'lucide-react'
 import { useState } from 'react'
 
 export default function Layout({ cfg }) {
@@ -9,6 +9,7 @@ export default function Layout({ cfg }) {
     { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
     { to: '/empleados', label: 'Empleados', icon: Users },
     { to: '/comparativo', label: 'Comparativo', icon: BarChart3 },
+    { to: '/sueldos', label: 'Sueldos', icon: Wallet },
     { to: '/historial', label: 'Historial', icon: History },
     { to: '/configuracion', label: 'Configuración', icon: SettingsIcon },
   ]
