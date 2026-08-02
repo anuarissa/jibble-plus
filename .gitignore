@@ -16,3 +16,7 @@ frontend/.env
 temporary screenshots/
 
 .vercel
+
+# Reportes generados por scripts/reporte-mensual.mjs (se regeneran cuando quieras)
+reportes/
+scripts/.build/
