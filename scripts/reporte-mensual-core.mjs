@@ -54,7 +54,12 @@ const OFICINAS_NOMBRES = new Set(['leisy oficina', 'erika bascope', 'vladimir ho
 // Alias de nombres del Excel → resolución fija para el CLI (editable).
 // 'IGNORAR' = ese nombre del Excel no se reporta (gerente, dueño, personal rotado).
 const ALIASES = {
-  [GROUP_IDS.SBARRO_HUPER]: { daniela: 'IGNORAR' },
+  [GROUP_IDS.SBARRO_HUPER]: {
+    daniela: 'IGNORAR',                                      // gerente (filas 00:00)
+    giussep: '0fd05836-c25d-4fc9-ad3d-97bb14524a06',         // Giuseppe Argento (typo de 3 letras, fuera del alcance del matcher)
+    andy: 'IGNORAR',                                         // apoyo EXTRA, no registrado en Jibble
+    nuevo: 'IGNORAR',                                        // fila placeholder del gerente
+  },
   [GROUP_IDS.SBARRO_AMERICA]: { anuar: 'IGNORAR' },
 }
 // ===========================================================================

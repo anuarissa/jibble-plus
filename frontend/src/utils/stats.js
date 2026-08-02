@@ -458,7 +458,9 @@ export function tablaMensual({ empleados, attendance, schedules, mes, condonacio
     const sched = schedules.find(s => s.personId === emp.id)
     const fichajesEmp = (attendance || []).filter(a => a.personId === emp.id)
     const cells = dias.map(day => resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, personOverrides }))
-    const totalHoras = cells.reduce((acc, c) => acc + (c.horas || 0), 0)
+    // Días anómalos (sin salida / horas absurdas): usar horas pagables, no las crudas
+    // (una sesión sin cerrar sumaría horas hasta "ahora" e infla el total).
+    const totalHoras = cells.reduce((acc, c) => acc + (c.anomalia ? (c.horasPagables || 0) : (c.horas || 0)), 0)
     const tardanzas = cells.filter(c => c.state === 'warn' || c.state === 'bad').length
     const aTiempo = cells.filter(c => c.state === 'good').length
     const faltas = cells.filter(c => c.falto).length
@@ -477,7 +479,9 @@ export function tablaSemanal({ empleados, attendance, schedules, ini, condonacio
     const cells = dias.map(day =>
       resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, personOverrides, weekKeyOverride: weekKey })
     )
-    const totalHoras = cells.reduce((acc, c) => acc + (c.horas || 0), 0)
+    // Días anómalos (sin salida / horas absurdas): usar horas pagables, no las crudas
+    // (una sesión sin cerrar sumaría horas hasta "ahora" e infla el total).
+    const totalHoras = cells.reduce((acc, c) => acc + (c.anomalia ? (c.horasPagables || 0) : (c.horas || 0)), 0)
     return { empleado: emp, cells, totalHoras }
   })
   return { dias, filas }
