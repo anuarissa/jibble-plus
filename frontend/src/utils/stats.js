@@ -311,16 +311,22 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, turnos, pers
       }
     }
     if (!fich) return { state: 'idle', day, dayStr }
-    // Vino en su día libre: mostrar fichaje aunque siga fichando ahora.
-    // Si no hay clockOut, calculamos horas hasta el momento actual.
+    // Vino en su día libre. Si no cerró el fichaje (o da horas absurdas) no se
+    // puede saber cuánto trabajó: horas 0 + anomalía, en vez de contar hasta
+    // "ahora" (inflaba los totales un poco más cada día que pasaba).
     const outRef = fich.clockOut ? new Date(fich.clockOut) : new Date()
     const horasLibre = (outRef - new Date(fich.clockIn)) / 3600000
+    const dudosoLibre = !fich.clockOut || horasLibre > 16
     return {
-      state: 'good', day, dayStr, fichaje: fich, horas: horasLibre,
+      state: 'good', day, dayStr, fichaje: fich,
+      horas: dudosoLibre ? 0 : horasLibre,
       mins: 0,
       programadoStart: null, programadoEnd: null,
       salidaState: fich.clockOut ? null : 'sinSalida',
       minSalidaDiff: null,
+      horasProgramadas: 0,
+      horasPagables: 0,
+      anomalia: dudosoLibre,
       motivoColor: 'diaLibreTrabajado',
       turnoCustom: false,
     }

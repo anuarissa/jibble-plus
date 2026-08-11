@@ -98,7 +98,8 @@ function turnosDeCarpeta(carpeta, empleados, groupId, desdeSemana) {
       for (const n of r.noEncontrados) if (!out.noEncontrados.includes(n)) out.noEncontrados.push(n)
       for (const w of r.warnings) {
         if (w.startsWith('Detectadas') || w.startsWith('Empleados no encontrados')) continue
-        out.warnings.push(`${f}: ${w}`)
+        const linea = `${f}: ${w}`
+        if (!out.warnings.includes(linea)) out.warnings.push(linea)
       }
       out.archivos.push(f)
     } catch (e) {
