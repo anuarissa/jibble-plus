@@ -60,7 +60,10 @@ const ALIASES = {
     andy: 'IGNORAR',                                         // apoyo EXTRA, no registrado en Jibble
     nuevo: 'IGNORAR',                                        // fila placeholder del gerente
   },
-  [GROUP_IDS.SBARRO_AMERICA]: { anuar: 'IGNORAR' },
+  [GROUP_IDS.SBARRO_AMERICA]: {
+    anuar: 'IGNORAR',
+    fabiola: '93a65596-276e-4b8b-93bd-56d0017621ca', // Fabiola Rojas (Nava ya no trabaja pero sigue en Jibble → ambigüedad)
+  },
 }
 // ===========================================================================
 
