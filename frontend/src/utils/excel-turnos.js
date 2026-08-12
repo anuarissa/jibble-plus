@@ -497,7 +497,7 @@ function fusionarTurnos(prev, nuevo) {
 // ambiguousOut (Map opcional): si el nombre matchea a varios empleados por primer
 // nombre, se registra ahí y matchEmpleado devuelve null para evitar aplicar al
 // equivocado. El caller usa el map para generar un warning.
-function matchEmpleado(empByNombre, raw, ambiguousOut = null) {
+export function matchEmpleado(empByNombre, raw, ambiguousOut = null) {
   const norm = normalizar(raw)
   if (empByNombre.has(norm)) return empByNombre.get(norm)
   const firstWord = norm.split(' ')[0]
@@ -533,7 +533,7 @@ function matchEmpleado(empByNombre, raw, ambiguousOut = null) {
   return null
 }
 
-function construirIndiceNombres(empleados) {
+export function construirIndiceNombres(empleados) {
   const m = new Map()
   for (const e of empleados) m.set(normalizar(e.fullName), e)
   return m

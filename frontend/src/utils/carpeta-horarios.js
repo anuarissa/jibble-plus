@@ -13,6 +13,7 @@
 import * as XLSX from 'xlsx-js-style'
 import { addDays } from 'date-fns'
 import { parseWorkbookTurnos, normalizarNombre } from './excel-turnos'
+import { esWorkbookTuesday, parseWorkbookTurnosTuesday } from './excel-turnos-tuesday'
 import { isoWeekKey } from './turnos'
 
 // Ventana de "recencia": semana actual + N anteriores. Nombres no encontrados y
@@ -48,12 +49,15 @@ export function getHandle(groupId) {
   return idbOp('readonly', store => store.get(groupId))
 }
 
-export async function conectarCarpeta(groupId) {
+// pickerPrefix distingue funcionalidades (horarios 'hor-', biométrico 'bio-') para
+// que Chrome recuerde la última carpeta de CADA una; storageKey permite que ambas
+// convivan en el mismo store de IndexedDB (biométrico usa 'bio:'+groupId).
+export async function conectarCarpeta(groupId, { pickerPrefix = 'hor-', storageKey = groupId } = {}) {
   // id ≤ 32 chars (límite duro de la API, charset [a-zA-Z0-9_-]); único por local
   // para que Chrome recuerde la última carpeta elegida de CADA local por separado.
-  const pickerId = ('hor-' + String(groupId).replace(/[^a-zA-Z0-9_-]/g, '')).slice(0, 32)
+  const pickerId = (pickerPrefix + String(groupId).replace(/[^a-zA-Z0-9_-]/g, '')).slice(0, 32)
   const handle = await window.showDirectoryPicker({ id: pickerId, mode: 'read' })
-  await idbOp('readwrite', store => store.put(handle, groupId))
+  await idbOp('readwrite', store => store.put(handle, storageKey))
   return handle
 }
 
@@ -128,7 +132,9 @@ export async function leerCarpeta(handle, empleados, opts = {}) {
       // Formato simple no trae fechas: la semana sale del nombre del archivo
       // (los templates de la app se llaman turnos_<local>_<weekKey>.xlsx).
       const weekEnNombre = file.name.match(/(\d{4}-W\d{1,2})/)?.[1]
-      const r = parseWorkbookTurnos(wb, empleados, { ...opts, weekKeyFallback: weekEnNombre, desdeSemana })
+      // Cuaderno de Tuesday (hoja PERSONAL TUESDAY) tiene su propio formato/parser.
+      const parse = esWorkbookTuesday(wb) ? parseWorkbookTurnosTuesday : parseWorkbookTurnos
+      const r = parse(wb, empleados, { ...opts, weekKeyFallback: weekEnNombre, desdeSemana })
       if (r.formato === 'simple' && !weekEnNombre) {
         total.warnings.push(`${file.name}: template simple sin semana en el nombre del archivo — omitido.`)
         continue

@@ -7,6 +7,8 @@ import { format, addDays } from 'date-fns'
 import * as jibble from '../api/jibble'
 import { getScheduleForPerson, shouldSkipPerson, resolveGroupId, resolveCargo, EMPLOYEE_OVERRIDES, esPersonaDummy, localOculto } from '../config/employees'
 import { useActiveWorkspace } from './useActiveWorkspace'
+import { personasSinteticas } from '../utils/biometrico'
+import { readBio, useBioVersion } from '../utils/biometrico-store'
 
 // Skip hardcoded (Owner) — siempre filtrar, no editable por usuario
 function EMPLOYEE_HARDCODED_SKIP(personId) {
@@ -82,10 +84,17 @@ export function useJibble(personOverrides = {}, locales = {}) {
     [groupsAll, locales]
   )
 
-  // PEOPLE_ALL: incluye los hidden, sin filtrar (para pantalla Empleados)
+  // Cambia cuando se sincroniza un biométrico → re-inyectar sintéticos
+  const bioVersion = useBioVersion()
+
+  // PEOPLE_ALL: incluye los hidden, sin filtrar (para pantalla Empleados).
+  // Además inyecta PERSONAS SINTÉTICAS del biométrico físico, SOLO para locales
+  // sin gente en Jibble (ej. Tuesday): así Sueldos/Empleados/Turnos funcionan
+  // igual que con gente real. Los locales con Jibble no reciben sintéticos —
+  // sus marcas biométricas se mapean por alias a los personId reales.
   const peopleAll = useMemo(() => {
     if (!raw.peopleRaw) return null
-    return raw.peopleRaw
+    const jibblePeople = raw.peopleRaw
       .filter(p => !(EMPLOYEE_HARDCODED_SKIP(p.id))) // el Owner se filtra siempre
       .filter(p => !esPersonaDummy(p.fullName)) // cuentas dummy del local (ej. "Sbarro Huper")
       .map(p => ({
@@ -95,7 +104,25 @@ export function useJibble(personOverrides = {}, locales = {}) {
         position: resolveCargo(p.id, p.position) || p.position,
         hidden: !!personOverrides[p.id]?.hidden,
       }))
-  }, [raw.peopleRaw, personOverrides])
+    const gruposConGente = new Set(jibblePeople.map(p => p.groupId))
+    const bio = readBio()
+    const sinteticos = []
+    for (const groupId of Object.keys(bio)) {
+      if (gruposConGente.has(groupId)) continue
+      const porId = new Map()
+      for (const mesStr of Object.keys(bio[groupId]).sort()) {
+        for (const p of (bio[groupId][mesStr].personas || [])) porId.set(p.idBio, p)
+      }
+      for (const p of personasSinteticas(groupId, [...porId.values()])) {
+        sinteticos.push({
+          ...p,
+          position: resolveCargo(p.id, '') || personOverrides[p.id]?.cargo || '',
+          hidden: !!personOverrides[p.id]?.hidden,
+        })
+      }
+    }
+    return [...jibblePeople, ...sinteticos]
+  }, [raw.peopleRaw, personOverrides, bioVersion])
 
   // PEOPLE: lista activa (sin Owner ni hidden) — la que usan Dashboard, Restaurant, etc.
   const people = useMemo(() => {

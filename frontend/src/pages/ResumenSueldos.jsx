@@ -8,16 +8,22 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
 import {
-  Wallet, Calendar, CalendarDays, CalendarRange, CalendarSearch,
+  Wallet, Calendar, CalendarDays, CalendarRange, CalendarSearch, Fingerprint, MonitorSmartphone,
   ChevronLeft, ChevronRight, ChevronDown, Download, FileSpreadsheet, Clock, UserX, Timer, AlertTriangle,
 } from 'lucide-react'
 import { addDays, addMonths, format, startOfMonth, endOfMonth, startOfWeek, parseISO } from 'date-fns'
 import { useJibble } from '../hooks/useJibble'
+import { useCarpetaBiometrico } from '../hooks/useCarpetaBiometrico'
 import { Avatar } from '../components/ui/Avatar'
 import { Skeleton } from '../components/ui/Skeleton'
+import { FuenteBiometricoPanel } from '../components/sueldos/FuenteBiometricoPanel'
 import { resumenSueldos } from '../utils/resumen-sueldos'
 import { MODELO_MENSUAL_DEFAULT } from '../utils/payroll'
 import { celdaToRow, comentarioAnomalia } from '../utils/stats'
+import { resolverPersonasBio, marcasToAttendance } from '../utils/biometrico'
+import { marcasEnRango, personasBioDeLocal, mesesConDatos, localesConBio, useBioVersion } from '../utils/biometrico-store'
+import { getAliases, setAlias } from '../utils/carpeta-horarios'
+import { asumirSemanasFaltantes, isoWeekKey } from '../utils/turnos'
 import { formatBs, formatHoras, formatFecha, formatFechaCorta, formatMesAno, formatDiaLargo } from '../utils/format'
 import { exportCSV, exportExcel } from '../utils/export'
 
@@ -50,8 +56,20 @@ export default function ResumenSueldos({ cfg }) {
   const [hasta, setHasta] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [personId, setPersonId] = useState('')
   const [expandido, setExpandido] = useState(null)
+  // Fuente de asistencia: null = automática ('bio' si el local no tiene gente en
+  // Jibble, 'app' en el resto). El usuario puede alternar App ↔ Biométrico.
+  const [fuente, setFuente] = useState(null)
+  const [aliasVersion, setAliasVersion] = useState(0)
+  const bioVersion = useBioVersion()
 
-  const grupos = data.groups || []
+  // Locales visibles ∪ locales ocultos que YA tienen datos biométricos cargados
+  // (resuelve el primer uso de Tuesday, oculto por default hasta el primer sync).
+  const grupos = useMemo(() => {
+    const visibles = data.groups || []
+    const conBio = localesConBio()
+    const extra = (data.groupsAll || []).filter(g => !visibles.some(v => v.id === g.id) && conBio.includes(g.id))
+    return [...visibles, ...extra]
+  }, [data.groups, data.groupsAll, bioVersion])
   const grupoActivo = groupId || grupos[0]?.id || ''
   const nombreLocal = cfg.config.locales[grupoActivo]?.name || grupos.find(g => g.id === grupoActivo)?.name || ''
 
@@ -94,15 +112,57 @@ export default function ResumenSueldos({ cfg }) {
   // el umbral de 208 h es mensual, en día/semana/rango se muestra el cálculo por hora.
   const modeloMensual = modo === 'mes' ? MODELO_MENSUAL_DEFAULT : null
 
+  // Local "solo biométrico" = toda su gente es sintética (no existe en Jibble), ej. Tuesday.
+  const esLocalBio = empleadosLocal.length > 0 && empleadosLocal.every(p => p.synthetic)
+  const fuenteEfectiva = fuente ?? (esLocalBio ? 'bio' : 'app')
+
+  // Carpeta del biométrico del local. Al primer sync con datos: mostrar el local
+  // si estaba oculto por default (sin pisar una decisión explícita del usuario).
+  const carpetaBio = useCarpetaBiometrico({
+    groupId: grupoActivo,
+    onDatosCargados: () => {
+      if (cfg.config.locales[grupoActivo]?.hidden === undefined) {
+        cfg.renombrarLocal(grupoActivo, { hidden: false })
+      }
+    },
+  })
+
+  // Asistencia desde el biométrico: marcas del rango + resolución de nombres
+  // (local con Jibble → alias/matcher a personId reales; sin Jibble → sintéticos).
+  const attendanceBio = useMemo(() => {
+    if (!grupoActivo) return { rows: [], noEncontrados: [] }
+    const iniStr = format(ini, 'yyyy-MM-dd')
+    const finStr = format(fin, 'yyyy-MM-dd')
+    const personasBio = personasBioDeLocal(grupoActivo)
+    const empleadosJibble = esLocalBio ? [] : empleadosLocal.filter(p => !p.synthetic)
+    const { mapa, noEncontrados } = resolverPersonasBio({
+      groupId: grupoActivo, personasBio, empleadosJibble, aliases: getAliases(grupoActivo),
+    })
+    return { rows: marcasToAttendance(marcasEnRango(grupoActivo, iniStr, finStr), { groupId: grupoActivo, mapa }), noEncontrados }
+  }, [grupoActivo, ini, fin, empleadosLocal, esLocalBio, bioVersion, aliasVersion])
+
+  const attendanceFuente = fuenteEfectiva === 'bio' ? attendanceBio.rows : data.attendance
+
+  // REGLA DE LA CASA (solo locales biométricos): semana del rango sin horario en el
+  // cuaderno → se AVISA y se asume el horario de la semana más cercana con datos.
+  const { turnosEfectivos, semanasAsumidas } = useMemo(() => {
+    if (!esLocalBio) return { turnosEfectivos: cfg.turnos, semanasAsumidas: [] }
+    const weekKeys = []
+    for (let d = startOfWeek(ini, { weekStartsOn: 1 }); d <= fin; d = addDays(d, 7)) weekKeys.push(isoWeekKey(d))
+    const ids = empleadosLocal.map(p => p.id)
+    const { relleno, semanasAsumidas } = asumirSemanasFaltantes(cfg.turnos, weekKeys, ids)
+    return { turnosEfectivos: relleno, semanasAsumidas }
+  }, [esLocalBio, cfg.turnos, ini, fin, empleadosLocal])
+
   const resumen = useMemo(() => {
     if (!ready || empleadosFiltrados.length === 0) return null
     return resumenSueldos({
       empleados: empleadosFiltrados,
-      attendance: data.attendance,
+      attendance: attendanceFuente,
       schedules: data.schedules,
       condonaciones: cfg.condonaciones,
       extrasAprobadas: cfg.extrasAprobadas,
-      turnos: cfg.turnos,
+      turnos: turnosEfectivos,
       personOverrides: cfg.personOverrides,
       ini, fin,
       settings: cfg.config.settings,
@@ -110,7 +170,7 @@ export default function ResumenSueldos({ cfg }) {
       groupId: grupoActivo,
       modeloMensual,
     })
-  }, [ready, empleadosFiltrados, data.attendance, data.schedules, cfg.condonaciones, cfg.extrasAprobadas, cfg.turnos, cfg.personOverrides, ini, fin, cfg.config.settings, grupoActivo, modeloMensual])
+  }, [ready, empleadosFiltrados, attendanceFuente, data.schedules, cfg.condonaciones, cfg.extrasAprobadas, turnosEfectivos, cfg.personOverrides, ini, fin, cfg.config.settings, grupoActivo, modeloMensual])
 
   // Series de las gráficas
   const chartEmpleados = useMemo(() => (resumen?.filas || []).map(f => ({
@@ -160,7 +220,7 @@ export default function ResumenSueldos({ cfg }) {
     { label: 'Días sin horario', accessor: 'diasSinHorario', width: 14, numFmt: '0' },
     { label: 'Días a revisar', accessor: 'diasARevisar', width: 13, numFmt: '0' },
   ]
-  const fileBase = `sueldos_${nombreLocal.replace(/[^a-z0-9]+/gi, '_')}_${format(ini, 'dd-MM-yyyy')}_${format(fin, 'dd-MM-yyyy')}`
+  const fileBase = `sueldos_${nombreLocal.replace(/[^a-z0-9]+/gi, '_')}_${format(ini, 'dd-MM-yyyy')}_${format(fin, 'dd-MM-yyyy')}${fuenteEfectiva === 'bio' ? '_BIOMETRICO' : ''}`
 
   if (!ready) return <div className="p-8 max-w-[1400px] mx-auto"><Skeleton className="h-96" /></div>
 
@@ -172,14 +232,39 @@ export default function ResumenSueldos({ cfg }) {
         <h1 className="text-4xl font-display font-bold tracking-tightest mb-1 flex items-center gap-3">
           <Wallet size={30} className="text-accent" /> Sueldos
         </h1>
-        <p className="text-sm text-ink-300">{nombreLocal} · {rangoLabel}</p>
+        <p className="text-sm text-ink-300">
+          {nombreLocal} · {rangoLabel} · fuente:{' '}
+          <span className="text-ink-100 font-medium">{fuenteEfectiva === 'bio' ? 'Biométrico físico' : 'App (Jibble)'}</span>
+        </p>
       </header>
 
       {/* Filtros */}
       <div className="surface p-4 mb-6 grain flex items-center gap-2 flex-wrap">
-        <select value={grupoActivo} onChange={e => { setGroupId(e.target.value); setPersonId(''); setExpandido(null) }} className="input text-sm w-auto">
+        <select value={grupoActivo} onChange={e => { setGroupId(e.target.value); setPersonId(''); setExpandido(null); setFuente(null) }} className="input text-sm w-auto">
           {grupos.map(g => <option key={g.id} value={g.id}>{cfg.config.locales[g.id]?.name || g.name}</option>)}
         </select>
+        {/* Fuente de asistencia: App (Jibble) vs Biométrico físico */}
+        <div className="flex gap-1 bg-bg-700/50 p-1 rounded-xl border border-white/5" data-testid="selector-fuente">
+          <button
+            onClick={() => setFuente('app')}
+            disabled={esLocalBio}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-35 disabled:cursor-not-allowed ${
+              fuenteEfectiva === 'app' ? 'bg-accent text-white shadow-glow' : 'text-ink-200 hover:text-ink-50'
+            }`}
+            title={esLocalBio ? 'Este local no usa Jibble — solo biométrico' : 'Fichajes de Jibble (celulares / kiosco)'}
+          >
+            <MonitorSmartphone size={13} /> App
+          </button>
+          <button
+            onClick={() => setFuente('bio')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+              fuenteEfectiva === 'bio' ? 'bg-accent text-white shadow-glow' : 'text-ink-200 hover:text-ink-50'
+            }`}
+            title="Marcas del aparato biométrico del local"
+          >
+            <Fingerprint size={13} /> Biométrico
+          </button>
+        </div>
         <div className="flex gap-1 bg-bg-700/50 p-1 rounded-xl border border-white/5">
           {MODOS.map(m => (
             <button
@@ -228,8 +313,42 @@ export default function ResumenSueldos({ cfg }) {
         )}
       </div>
 
+      {/* Fuente biométrico: carpeta conectada, meses cargados, nombres sin resolver */}
+      {fuenteEfectiva === 'bio' && (
+        <FuenteBiometricoPanel
+          carpeta={carpetaBio}
+          meses={mesesConDatos(grupoActivo)}
+          noEncontrados={attendanceBio.noEncontrados}
+          empleadosParaAlias={esLocalBio ? [] : empleadosLocal.filter(p => !p.synthetic)}
+          onAlias={(nombre, valor) => { setAlias(grupoActivo, nombre, valor); setAliasVersion(v => v + 1) }}
+          sinDatosEnRango={attendanceBio.rows.length === 0}
+          rangoLabel={rangoLabel}
+        />
+      )}
+
+      {/* Semanas del rango sin horario en el cuaderno → horario asumido (regla de la casa) */}
+      {semanasAsumidas.length > 0 && (
+        <div className="mb-6 rounded-xl border border-warn/40 bg-warn/5 p-4 flex items-start gap-3" data-testid="banner-semanas-asumidas">
+          <AlertTriangle size={20} className="text-warn mt-0.5 shrink-0" />
+          <div className="text-sm text-ink-200">
+            <span className="font-semibold text-warn">
+              {semanasAsumidas.length} semana{semanasAsumidas.length > 1 ? 's' : ''} sin horario en el cuaderno del gerente
+            </span>
+            {' — '}se asumió el horario de la semana más cercana para poder calcular retrasos:{' '}
+            {semanasAsumidas.map(s => `${s.semana} (usa ${s.desde})`).join(' · ')}.
+            <span className="block text-xs text-ink-300 mt-0.5">
+              Los días asumidos llevan su nota en el detalle. Pide al gerente completar el cuaderno para tener el dato real.
+            </span>
+          </div>
+        </div>
+      )}
+
       {!resumen || resumen.filas.length === 0 ? (
-        <div className="surface p-8 text-center text-ink-300">Sin empleados o datos en este rango.</div>
+        <div className="surface p-8 text-center text-ink-300">
+          {fuenteEfectiva === 'bio' && attendanceBio.rows.length === 0
+            ? 'Sin marcas del biométrico en este rango — conecta la carpeta o exporta el mes del aparato.'
+            : 'Sin empleados o datos en este rango.'}
+        </div>
       ) : (
         <>
           {/* Lo que no cuadra: sin horario cargado y días a revisar */}
@@ -595,7 +714,11 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal, aprobarExtra, reverti
                               </span>
                             ) : '—'}
                         </td>
-                        <td className="py-1.5 text-right font-mono">{row['Horas trabajadas'] || '—'}</td>
+                        <td className="py-1.5 text-right font-mono" title={c.anomalia ? 'Día anómalo: se muestran las horas PAGABLES (programadas), no las fichadas' : undefined}>
+                          {c.anomalia
+                            ? (c.horasPagables > 0 ? `${c.horasPagables.toFixed(2)}*` : '—')
+                            : (row['Horas trabajadas'] || '—')}
+                        </td>
                         <td className={`py-1.5 pl-3 ${enRojo || c.sinHorario ? 'text-bad' : 'text-ink-400'}`}>
                           {[
                             c.revisarTemprano ? `Llegó ${c.minAntes} min antes de su horario (no se pagan — revisar).` : null,

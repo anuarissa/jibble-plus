@@ -244,6 +244,46 @@ export function textToTurno(raw) {
   return { startTime: segments[0].startTime, endTime: segments[segments.length - 1].endTime, segments }
 }
 
+// REGLA DE LA CASA (Anuar, ago-2026): si una semana no tiene horario en el cuaderno
+// del gerente, se AVISA pero se ASUME el horario de la semana más cercana con datos
+// (para poder calcular retrasos igual). Cada celda copiada queda marcada con nota.
+// turnosPorSemana: { weekKey: { personId: { dow: celda } } }
+// weekKeysNecesarias: semanas que el rango a evaluar necesita cubrir.
+// personIds (opcional): limitar a las personas de UN local — el storage de la app
+//   mezcla todos los locales en cada semana, así que "semana con datos" y la copia
+//   se evalúan solo sobre esas personas, y el relleno se MERGEA sin pisar al resto.
+// → { relleno: turnos con las semanas faltantes copiadas, semanasAsumidas: [{semana, desde}] }
+export function asumirSemanasFaltantes(turnosPorSemana, weekKeysNecesarias, personIds = null) {
+  const base = turnosPorSemana || {}
+  const filtro = personIds ? new Set(personIds) : null
+  const tieneDatos = wk => Object.keys(base[wk] || {}).some(pid => !filtro || filtro.has(pid))
+  const disponibles = Object.keys(base).filter(tieneDatos).sort()
+  const relleno = { ...base }
+  const semanasAsumidas = []
+  for (const wk of (weekKeysNecesarias || [])) {
+    if (tieneDatos(wk)) continue
+    if (!disponibles.length) continue
+    // preferir la semana ANTERIOR más cercana; si no hay, la siguiente
+    const anteriores = disponibles.filter(d => d < wk)
+    const desde = anteriores[anteriores.length - 1] || disponibles.find(d => d > wk)
+    if (!desde) continue
+    const copia = { ...(relleno[wk] || {}) }
+    for (const [personId, dias] of Object.entries(base[desde])) {
+      if (filtro && !filtro.has(personId)) continue
+      const diasCopia = {}
+      for (const [dow, celdaRaw] of Object.entries(dias)) {
+        const celda = normalizarCelda(celdaRaw)
+        if (!celda || celda.tipo === 'default') continue
+        diasCopia[dow] = { ...celda, nota: `Horario ASUMIDO (copiado de ${desde} — esta semana no está en el cuaderno)` }
+      }
+      if (Object.keys(diasCopia).length) copia[personId] = diasCopia
+    }
+    relleno[wk] = copia
+    semanasAsumidas.push({ semana: wk, desde })
+  }
+  return { relleno, semanasAsumidas }
+}
+
 // Días de la semana en español (orden Lun..Dom)
 export const DIAS_LABEL = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 export const DIAS_LARGO = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']

@@ -20,3 +20,7 @@ temporary screenshots/
 # Reportes generados por scripts/reporte-mensual.mjs (se regeneran cuando quieras)
 reportes/
 scripts/.build/
+
+# Datos reales de locales (biometricos, planillas del contador) - no van al repo
+DATOS LOCALES/**
+!DATOS LOCALES/LEEME.md
