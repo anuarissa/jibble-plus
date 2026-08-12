@@ -13,6 +13,7 @@ const KEY_TARIFAS = 'jibble_tarifas_v1'
 const KEY_CONDONACIONES = 'jibble_condonaciones_v1'
 const KEY_PERSON_OVERRIDES = 'jibble_person_overrides_v1' // { personId: { groupId, cargo, sueldoMensual, tarifa, schedule, hidden } }
 const KEY_TURNOS = 'jibble_turnos_v1' // { weekKey: { personId: { dow: { startTime, endTime } | "OFF" } } }
+const KEY_EXTRAS_APROBADAS = 'jibble_extras_aprobadas_v1' // { [attendanceId]: { aprobada: true, minutos, fecha } }
 
 const DEFAULT_CONFIG = {
   setupComplete: false,
@@ -49,12 +50,14 @@ export function useLocalConfig() {
   const [condonaciones, setCondonaciones] = useState(() => readJSON(KEY_CONDONACIONES, {}))
   const [personOverrides, setPersonOverridesState] = useState(() => readJSON(KEY_PERSON_OVERRIDES, {}))
   const [turnos, setTurnos] = useState(() => readJSON(KEY_TURNOS, {}))
+  const [extrasAprobadas, setExtrasAprobadas] = useState(() => readJSON(KEY_EXTRAS_APROBADAS, {}))
 
   useEffect(() => writeJSON(KEY_CONFIG, config), [config])
   useEffect(() => writeJSON(KEY_TARIFAS, tarifas), [tarifas])
   useEffect(() => writeJSON(KEY_CONDONACIONES, condonaciones), [condonaciones])
   useEffect(() => writeJSON(KEY_PERSON_OVERRIDES, personOverrides), [personOverrides])
   useEffect(() => writeJSON(KEY_TURNOS, turnos), [turnos])
+  useEffect(() => writeJSON(KEY_EXTRAS_APROBADAS, extrasAprobadas), [extrasAprobadas])
 
   const completarSetup = useCallback((locales) => {
     setConfig(c => ({ ...c, setupComplete: true, locales }))
@@ -240,23 +243,41 @@ export function useLocalConfig() {
     })
   }, [])
 
+  // === EXTRAS APROBADAS ===
+  // Regla de la casa: quedarse >15 min después del horario NO se paga salvo que
+  // Anuar lo apruebe (se paga desde el minuto 16). Key = attendance id del fichaje.
+  const aprobarExtra = useCallback((attendanceId, minutos = 0) => {
+    setExtrasAprobadas(e => ({ ...e, [attendanceId]: { aprobada: true, minutos, fecha: new Date().toISOString() } }))
+  }, [])
+
+  const revertirExtra = useCallback((attendanceId) => {
+    setExtrasAprobadas(e => {
+      const next = { ...e }
+      delete next[attendanceId]
+      return next
+    })
+  }, [])
+
   const reset = useCallback(() => {
     localStorage.removeItem(KEY_CONFIG)
     localStorage.removeItem(KEY_TARIFAS)
     localStorage.removeItem(KEY_CONDONACIONES)
     localStorage.removeItem(KEY_PERSON_OVERRIDES)
     localStorage.removeItem(KEY_TURNOS)
+    localStorage.removeItem(KEY_EXTRAS_APROBADAS)
     setConfig(DEFAULT_CONFIG)
     setTarifas({})
     setCondonaciones({})
     setPersonOverridesState({})
     setTurnos({})
+    setExtrasAprobadas({})
   }, [])
 
   return {
     config,
     tarifas,
     condonaciones,
+    extrasAprobadas,
     personOverrides,
     turnos,
     completarSetup,
@@ -278,6 +299,8 @@ export function useLocalConfig() {
     copiarTurnosDesdeAnterior,
     condonar,
     revertirCondonacion,
+    aprobarExtra,
+    revertirExtra,
     reset,
   }
 }

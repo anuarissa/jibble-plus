@@ -8,6 +8,17 @@
 
 export const DEFAULT_OVERTIME_MULTIPLIER = 1.5
 
+// MODELO MENSUAL (descifrado del preliminar del contador, jul-2026, confirmado por Anuar):
+//   - Sueldo de referencia 3.300 Bs si cubre 208 h en el mes.
+//   - Menos de 208 h → proporcional: horas × (3300/208) = 15,865 Bs/h (Estela 162,5 h → 2.578).
+//   - Horas por encima de 208 (o extras aprobadas por Anuar) → 13,75 Bs/h (= 3300/240,
+//     la tarifa que usa el contador: Cristian 1.120,62 = 81,5 h × 13,75 exacto).
+export const MODELO_MENSUAL_DEFAULT = {
+  sueldoCompleto: 3300,
+  horasCompletas: 208,
+  tarifaExtra: 13.75,
+}
+
 // Suma horas totales de una lista de fichajes (clockOut puede ser null si está activo).
 export function sumarHoras(attendanceList, ahora = new Date()) {
   let totalMin = 0
@@ -43,15 +54,32 @@ export function planillaEmpleado(empleado, fichajes, tardanzas, config = {}) {
   //  - Si no (legacy), modelo semanal: total - esperadas.
   let horasExtra, horasNormales
   if (config.horasExtraDia != null) {
+    // horasPagablesDia ya viene RECORTADO a la ventana programada (reglas ago-2026:
+    // lo llegado antes y lo quedado después no cuentan), así que las extras
+    // aprobadas van ENCIMA de las horas pagables, no dentro.
     horasExtra = Math.max(0, config.horasExtraDia)
-    horasNormales = Math.max(0, horasTotales - horasExtra)
+    horasNormales = Math.max(0, horasTotales)
   } else {
     horasNormales = Math.min(horasTotales, esperadas)
     horasExtra = Math.max(0, horasTotales - esperadas)
   }
 
-  const baseTarifa = horasNormales * tarifa
-  const extraTarifa = horasExtra * tarifa * mult
+  let baseTarifa, extraTarifa, tarifaEfectiva = tarifa
+  if (config.modeloMensual) {
+    // MODELO MENSUAL (contador): básico proporcional hasta 208 h (tope 3.300),
+    // lo que pasa de 208 h + extras aprobadas a 13,75 Bs/h. La tarifa por hora del
+    // empleado se IGNORA en este modo: el sueldo de referencia es igual para todos.
+    const { sueldoCompleto, horasCompletas, tarifaExtra } = { ...MODELO_MENSUAL_DEFAULT, ...config.modeloMensual }
+    tarifaEfectiva = sueldoCompleto / horasCompletas
+    horasNormales = Math.min(horasTotales, horasCompletas)
+    const horasSobre = Math.max(0, horasTotales - horasCompletas)
+    baseTarifa = horasNormales * tarifaEfectiva          // = sueldoCompleto justo al llegar a 208 h
+    horasExtra = horasSobre + Math.max(0, config.horasExtraDia ?? 0)
+    extraTarifa = horasExtra * tarifaExtra
+  } else {
+    baseTarifa = horasNormales * tarifa
+    extraTarifa = horasExtra * tarifa * mult
+  }
 
   const tardanzasActivas = tardanzas.filter(t => !t.condonada)
   // Multa: si el caller pasa config.multaBsDia / minTardeDia (calculados por día en
@@ -76,7 +104,7 @@ export function planillaEmpleado(empleado, fichajes, tardanzas, config = {}) {
     personId: empleado.id,
     fullName: empleado.fullName,
     position: empleado.position,
-    tarifa,
+    tarifa: round(tarifaEfectiva, 4),
     horasTotales: round(horasTotales, 2),
     horasNormales: round(horasNormales, 2),
     horasExtra: round(horasExtra, 2),

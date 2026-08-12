@@ -34,9 +34,11 @@ function round(n, d = 2) {
 //             extras, bruto/descuentos/totalAPagar, y `cells` para el detalle diario.
 //   totales:  agregado del conjunto.
 //   porDia[]: serie diaria para gráficas { dayStr, label, horas, horasProgramadas, minTarde, faltas }.
+// modeloMensual: null (legacy por hora) | { sueldoCompleto, horasCompletas, tarifaExtra }
+// — activarlo SOLO cuando el rango es un mes completo (el umbral de 208 h es mensual).
 export function resumenSueldos({
-  empleados, attendance, schedules, condonaciones, turnos, personOverrides,
-  ini, fin, settings, getTarifa, groupId,
+  empleados, attendance, schedules, condonaciones, extrasAprobadas = null, turnos, personOverrides,
+  ini, fin, settings, getTarifa, groupId, modeloMensual = null,
 }) {
   const hoyStr = format(new Date(), 'yyyy-MM-dd')
   const iniStr = format(ini, 'yyyy-MM-dd')
@@ -47,7 +49,7 @@ export function resumenSueldos({
   const cellsPorPersona = {}
   let semanaIni = startOfWeek(ini, { weekStartsOn: 1 })
   while (semanaIni <= fin) {
-    const tabla = tablaSemanal({ empleados, attendance, schedules, ini: semanaIni, condonaciones, turnos, personOverrides })
+    const tabla = tablaSemanal({ empleados, attendance, schedules, ini: semanaIni, condonaciones, extrasAprobadas, turnos, personOverrides })
     for (const fila of tabla.filas) {
       const keep = fila.cells.filter(c => c.dayStr >= iniStr && c.dayStr <= finStr && c.dayStr <= hoyStr)
       if (keep.length) {
@@ -88,6 +90,7 @@ export function resumenSueldos({
     multiplicadorExtra: settings?.multiplicadorExtra,
     horasExtraPorPersona, horasPagablesPorPersona, descuentoNoRegistroPorPersona, diasNoRegistroPorPersona,
     multaBsPorPersona, minTardePorPersona,
+    modeloMensual,
   })
   const planillaPorPersona = Object.fromEntries(planilla.filas.map(f => [f.personId, f]))
 
@@ -146,6 +149,11 @@ export function resumenSueldos({
       descuentoNoRegistro: round(agg.descuentoNoRegistro),
       horasExtra: round(agg.horasExtra),
       minExtra: agg.minExtra,
+      // Señales de revisión (reglas de la casa)
+      minExtraPendiente: agg.minExtraPendiente,   // min extra sin aprobar (>15 min tras salida)
+      diasExtraPendiente: agg.diasExtraPendiente,
+      diasTemprano: agg.diasTemprano,             // días que llegó ≥30 min antes
+      minAntesTotal: agg.minAntesTotal,
       anomalias: agg.anomalias,
       diasSinHorario,
       diasARevisar,
@@ -167,6 +175,9 @@ export function resumenSueldos({
     horasNormales: t.horasNormales + f.horasNormales,
     horasExtra: t.horasExtra + f.horasExtra,
     minExtra: t.minExtra + f.minExtra,
+    minExtraPendiente: t.minExtraPendiente + f.minExtraPendiente,
+    diasExtraPendiente: t.diasExtraPendiente + f.diasExtraPendiente,
+    diasTemprano: t.diasTemprano + f.diasTemprano,
     diasTarde: t.diasTarde + f.diasTarde,
     minTarde: t.minTarde + f.minTarde,
     multaBs: t.multaBs + f.multaBs,
@@ -180,7 +191,7 @@ export function resumenSueldos({
     totalAPagar: t.totalAPagar + f.totalAPagar,
   }), {
     horasProgramadas: 0, horasTrabajadas: 0, horasPagables: 0, horasTotales: 0, horasNormales: 0,
-    horasExtra: 0, minExtra: 0,
+    horasExtra: 0, minExtra: 0, minExtraPendiente: 0, diasExtraPendiente: 0, diasTemprano: 0,
     diasTarde: 0, minTarde: 0, multaBs: 0, faltas: 0,
     diasNoRegistro: 0, descuentoNoRegistro: 0, diasSinHorario: 0, diasARevisar: 0,
     bruto: 0, descuentoTardanza: 0, totalAPagar: 0,

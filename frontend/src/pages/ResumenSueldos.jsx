@@ -16,6 +16,7 @@ import { useJibble } from '../hooks/useJibble'
 import { Avatar } from '../components/ui/Avatar'
 import { Skeleton } from '../components/ui/Skeleton'
 import { resumenSueldos } from '../utils/resumen-sueldos'
+import { MODELO_MENSUAL_DEFAULT } from '../utils/payroll'
 import { celdaToRow, comentarioAnomalia } from '../utils/stats'
 import { formatBs, formatHoras, formatFecha, formatFechaCorta, formatMesAno, formatDiaLargo } from '../utils/format'
 import { exportCSV, exportExcel } from '../utils/export'
@@ -89,6 +90,10 @@ export default function ResumenSueldos({ cfg }) {
     [empleadosLocal, personId]
   )
 
+  // Modelo mensual del contador (3.300 Bs por 208 h, extras a 13,75) SOLO en modo Mes:
+  // el umbral de 208 h es mensual, en día/semana/rango se muestra el cálculo por hora.
+  const modeloMensual = modo === 'mes' ? MODELO_MENSUAL_DEFAULT : null
+
   const resumen = useMemo(() => {
     if (!ready || empleadosFiltrados.length === 0) return null
     return resumenSueldos({
@@ -96,14 +101,16 @@ export default function ResumenSueldos({ cfg }) {
       attendance: data.attendance,
       schedules: data.schedules,
       condonaciones: cfg.condonaciones,
+      extrasAprobadas: cfg.extrasAprobadas,
       turnos: cfg.turnos,
       personOverrides: cfg.personOverrides,
       ini, fin,
       settings: cfg.config.settings,
       getTarifa: cfg.getTarifaResolved,
       groupId: grupoActivo,
+      modeloMensual,
     })
-  }, [ready, empleadosFiltrados, data.attendance, data.schedules, cfg.condonaciones, cfg.turnos, cfg.personOverrides, ini, fin, cfg.config.settings, grupoActivo])
+  }, [ready, empleadosFiltrados, data.attendance, data.schedules, cfg.condonaciones, cfg.extrasAprobadas, cfg.turnos, cfg.personOverrides, ini, fin, cfg.config.settings, grupoActivo, modeloMensual])
 
   // Series de las gráficas
   const chartEmpleados = useMemo(() => (resumen?.filas || []).map(f => ({
@@ -141,6 +148,8 @@ export default function ResumenSueldos({ cfg }) {
     { label: 'Días tarde', accessor: 'diasTarde', width: 10, numFmt: '0' },
     { label: 'Min tarde', accessor: 'minTarde', width: 10, numFmt: '0' },
     { label: 'Min extra', accessor: 'minExtra', width: 10, numFmt: '0' },
+    { label: 'Min extra por aprobar', accessor: 'minExtraPendiente', width: 18, numFmt: '0' },
+    { label: 'Llegadas ≥30 min antes', accessor: 'diasTemprano', width: 18, numFmt: '0' },
     { label: 'Multa tardanza (Bs)', accessor: 'multaBs', width: 16, numFmt: '"Bs" #,##0.00' },
     { label: 'Días no-registro', accessor: 'diasNoRegistro', width: 14, numFmt: '0' },
     { label: 'Desc. no-registro (Bs)', accessor: 'descuentoNoRegistro', width: 18, numFmt: '"Bs" #,##0.00' },
@@ -251,6 +260,28 @@ export default function ResumenSueldos({ cfg }) {
             </div>
           )}
 
+          {/* Revisión pendiente: extras sin aprobar y llegadas muy tempranas (reglas de la casa) */}
+          {(t.diasExtraPendiente > 0 || t.diasTemprano > 0) && (
+            <div data-testid="banner-revision" className="mb-6 rounded-xl border border-warn/40 bg-warn/5 p-4 flex items-start gap-3">
+              <Timer size={20} className="text-warn mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0 text-sm text-ink-200 space-y-1">
+                {t.diasExtraPendiente > 0 && (
+                  <p>
+                    <span className="font-semibold text-warn">{t.diasExtraPendiente} día{t.diasExtraPendiente > 1 ? 's' : ''} con extras por aprobar</span>
+                    {' '}({t.minExtraPendiente} min en total). No se pagan salvo que los apruebes: abre el detalle
+                    del empleado y usa el botón <span className="text-ink-100 font-medium">Aprobar</span> en cada día.
+                  </p>
+                )}
+                {t.diasTemprano > 0 && (
+                  <p>
+                    <span className="font-semibold text-warn">{t.diasTemprano} llegada{t.diasTemprano > 1 ? 's' : ''} ≥30 min antes del horario</span>
+                    {' '}— ese tiempo no se paga (la ventana arranca en la hora programada), pero revisa qué pasó.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <Kpi
@@ -279,7 +310,9 @@ export default function ResumenSueldos({ cfg }) {
               label="Total a pagar"
               value={formatBs(t.totalAPagar)}
               valueClass="text-accent"
-              sub={`bruto ${formatBs(t.bruto)} − descuentos ${formatBs(t.descuentoAplicado)}`}
+              sub={modeloMensual
+                ? `bruto ${formatBs(t.bruto)} − descuentos ${formatBs(t.descuentoAplicado)} · modelo mensual: 3.300 Bs por 208 h`
+                : `bruto ${formatBs(t.bruto)} − descuentos ${formatBs(t.descuentoAplicado)}`}
             />
           </div>
 
@@ -361,6 +394,8 @@ export default function ResumenSueldos({ cfg }) {
                         abierto={abierto}
                         onToggle={() => setExpandido(abierto ? null : f.personId)}
                         nombreLocal={nombreLocal}
+                        aprobarExtra={cfg.aprobarExtra}
+                        revertirExtra={cfg.revertirExtra}
                       />
                     )
                   })}
@@ -431,7 +466,7 @@ function TooltipDia({ active, payload, label }) {
   )
 }
 
-function FilaEmpleado({ f, abierto, onToggle, nombreLocal }) {
+function FilaEmpleado({ f, abierto, onToggle, nombreLocal, aprobarExtra, revertirExtra }) {
   return (
     <>
       <tr onClick={onToggle} className="border-t border-white/5 hover:bg-bg-700/30 transition cursor-pointer">
@@ -444,6 +479,16 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal }) {
                 {f.diasARevisar > 0 && (
                   <span className="badge bg-bad/15 text-bad text-[10px] whitespace-nowrap" title="Días con datos a revisar — abre el detalle">
                     {f.diasARevisar} a revisar
+                  </span>
+                )}
+                {f.diasExtraPendiente > 0 && (
+                  <span className="badge bg-warn/15 text-warn text-[10px] whitespace-nowrap" title={`Se quedó después de su salida en ${f.diasExtraPendiente} día(s) — ${f.minExtraPendiente} min por aprobar. Abre el detalle para aprobar o descartar.`}>
+                    {f.minExtraPendiente} min por aprobar
+                  </span>
+                )}
+                {f.diasTemprano > 0 && (
+                  <span className="badge bg-warn/15 text-warn text-[10px] whitespace-nowrap" title={`Llegó ≥30 min antes de su horario en ${f.diasTemprano} día(s) (${f.minAntesTotal} min). Ese tiempo no se paga — revisa qué pasó.`}>
+                    {f.diasTemprano} llegada{f.diasTemprano > 1 ? 's' : ''} temprana{f.diasTemprano > 1 ? 's' : ''}
                   </span>
                 )}
               </div>
@@ -526,10 +571,37 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal }) {
                         <td className="py-1.5 text-right">{row['Min tarde'] ? <span className={c.condonada ? 'text-ink-400 line-through' : 'text-warn'}>+{row['Min tarde']}</span> : '—'}</td>
                         <td className="py-1.5 text-right font-mono text-ink-300">{row['Programado salida'] || '—'}</td>
                         <td className="py-1.5 text-right font-mono text-ink-100">{row['Salida real'] || '—'}</td>
-                        <td className="py-1.5 text-right">{c.minExtraComputado > 0 && !c.anomalia ? <span className="text-accent-400">+{c.minExtraComputado}</span> : '—'}</td>
+                        <td className="py-1.5 text-right whitespace-nowrap">
+                          {c.anomalia || !c.extraKey ? '—'
+                            : c.extraAprobada && c.minExtraComputado > 0 ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <span className="text-good font-medium">+{c.minExtraComputado} ✓</span>
+                                <button
+                                  onClick={e => { e.stopPropagation(); revertirExtra(c.extraKey) }}
+                                  className="text-[10px] px-1.5 py-0.5 rounded-md border border-white/10 text-ink-300 hover:text-ink-50 hover:border-white/25 focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent active:opacity-70 transition-colors"
+                                  title="Quitar la aprobación: estos minutos dejan de pagarse"
+                                >Quitar</button>
+                              </span>
+                            ) : c.extraAprobable > 0 ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <span className="text-warn font-medium" title={`Se quedó ${Math.max(0, c.minSalidaDiff ?? 0)} min después de su salida programada — se paga desde el minuto 16 SOLO si lo apruebas`}>
+                                  {c.extraAprobable} por aprobar
+                                </span>
+                                <button
+                                  onClick={e => { e.stopPropagation(); aprobarExtra(c.extraKey, c.extraAprobable) }}
+                                  className="text-[10px] px-1.5 py-0.5 rounded-md bg-warn/15 border border-warn/40 text-warn hover:bg-warn/25 focus-visible:outline focus-visible:outline-1 focus-visible:outline-warn active:opacity-70 transition-colors font-medium"
+                                  title={`Aprobar ${c.extraAprobable} min extra (se pagan)`}
+                                >Aprobar</button>
+                              </span>
+                            ) : '—'}
+                        </td>
                         <td className="py-1.5 text-right font-mono">{row['Horas trabajadas'] || '—'}</td>
                         <td className={`py-1.5 pl-3 ${enRojo || c.sinHorario ? 'text-bad' : 'text-ink-400'}`}>
-                          {comentario || (c.condonada ? 'Tardanza condonada — no se cobra multa.' : '')}
+                          {[
+                            c.revisarTemprano ? `Llegó ${c.minAntes} min antes de su horario (no se pagan — revisar).` : null,
+                            comentario,
+                            !comentario && c.condonada ? 'Tardanza condonada — no se cobra multa.' : null,
+                          ].filter(Boolean).join(' ')}
                         </td>
                       </tr>
                     )

@@ -3,6 +3,7 @@ import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, Cal
 import { addDays, startOfWeek, format, addMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { Avatar } from '../ui/Avatar'
 import { resumenSueldos } from '../../utils/resumen-sueldos'
+import { MODELO_MENSUAL_DEFAULT } from '../../utils/payroll'
 import { formatBs, formatHoras, formatFechaCorta, formatMesAno } from '../../utils/format'
 import { exportCSV, exportExcel } from '../../utils/export'
 
@@ -45,13 +46,16 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
     attendance,
     schedules,
     condonaciones: cfg.condonaciones,
+    extrasAprobadas: cfg.extrasAprobadas,
     turnos: cfg.turnos,
     personOverrides: cfg.personOverrides,
     ini, fin,
     settings: cfg.config.settings,
     getTarifa: cfg.getTarifaResolved,
     groupId: group.id,
-  }), [empleados, attendance, schedules, cfg.tarifas, cfg.personOverrides, cfg.condonaciones, cfg.turnos, ini, fin, group.id, cfg.config.settings])
+    // Modo Mes → modelo mensual del contador (3.300 Bs por 208 h). Paridad con Sueldos.
+    modeloMensual: modo === 'mes' ? MODELO_MENSUAL_DEFAULT : null,
+  }), [empleados, attendance, schedules, cfg.tarifas, cfg.personOverrides, cfg.condonaciones, cfg.extrasAprobadas, cfg.turnos, ini, fin, group.id, cfg.config.settings, modo])
 
   const exportColumns = [
     { label: 'Empleado', accessor: 'fullName', width: 26 },

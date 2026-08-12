@@ -23,6 +23,7 @@ import { parseWorkbookTurnos } from '../frontend/src/utils/excel-turnos'
 import { isoWeekKey } from '../frontend/src/utils/turnos'
 import { descargarReporteMensual } from '../frontend/src/utils/reporte-mensual'
 import { resumenSueldos } from '../frontend/src/utils/resumen-sueldos'
+import { MODELO_MENSUAL_DEFAULT } from '../frontend/src/utils/payroll'
 import {
   GROUP_IDS, resolveGroupId, esPersonaDummy, getTarifaForPerson, getScheduleForPerson, EMPLOYEE_OVERRIDES,
 } from '../frontend/src/config/employees'
@@ -83,7 +84,8 @@ function leerCredenciales() {
 
 // Réplica en fs de leerCarpeta (mismo comportamiento que la app):
 // todos los .xlsx, orden por mtime asc → semana repetida la gana el más nuevo.
-function turnosDeCarpeta(carpeta, empleados, groupId, desdeSemana) {
+// (exportada: también la usa scripts/cuadre-huper-core.mjs)
+export function turnosDeCarpeta(carpeta, empleados, groupId, desdeSemana) {
   const out = { aplicarPorSemana: {}, noEncontrados: [], warnings: [], archivos: [] }
   if (!fs.existsSync(carpeta)) {
     out.warnings.push(`La carpeta no existe: ${carpeta}`)
@@ -211,14 +213,28 @@ export async function generarReportes(mesStr, raiz) {
       mes, cfg, group: { id: local.groupId, name: local.nombre },
     })
 
-    // Totales de control (mismo motor que la página Sueldos)
+    // Totales de control (mismo motor que la página Sueldos, modo Mes → modelo mensual
+    // del contador: 3.300 Bs por 208 h, extras aprobadas a 13,75 Bs/h). Las aprobaciones
+    // viven en el navegador (localStorage) — el CLI no aprueba, solo lista pendientes.
     const resumen = resumenSueldos({
       empleados, attendance, schedules,
-      condonaciones: {}, turnos: t.aplicarPorSemana, personOverrides: {},
+      condonaciones: {}, extrasAprobadas: {}, turnos: t.aplicarPorSemana, personOverrides: {},
       ini, fin, settings: cfg.config.settings, getTarifa: cfg.getTarifaResolved, groupId: local.groupId,
+      modeloMensual: MODELO_MENSUAL_DEFAULT,
     })
     const tt = resumen.totales
     console.log(`  Totales: ${tt.horasTrabajadas} h trabajadas / ${tt.horasProgramadas} h programadas · ${tt.faltas} faltas · ${tt.minTarde} min tarde (−Bs ${tt.multaBs}) · a pagar Bs ${tt.totalAPagar}`)
+    if (tt.diasExtraPendiente > 0 || tt.diasTemprano > 0) {
+      console.log(`  ⚠ Revisión pendiente: ${tt.diasExtraPendiente} día(s) con extras por aprobar (${tt.minExtraPendiente} min, no pagados) · ${tt.diasTemprano} llegada(s) ≥30 min antes`)
+      for (const f of resumen.filas) {
+        if (f.diasExtraPendiente > 0 || f.diasTemprano > 0) {
+          const partes = []
+          if (f.diasExtraPendiente > 0) partes.push(`${f.minExtraPendiente} min extra por aprobar en ${f.diasExtraPendiente} día(s)`)
+          if (f.diasTemprano > 0) partes.push(`${f.diasTemprano} llegada(s) temprana(s) (${f.minAntesTotal} min)`)
+          console.log(`    - ${f.fullName}: ${partes.join(' · ')} → aprobar en la web (Sueldos → detalle)`)
+        }
+      }
+    }
     const safe = local.nombre.replace(/[^a-z0-9]+/gi, '_')
     console.log(`  ✓ Excel: reportes/reporte_mensual_${safe}_${mesStr}.xlsx`)
     generados++
