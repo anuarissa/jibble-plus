@@ -104,10 +104,15 @@ try {
     semanasTocadas++
   }
 
+  // Workspace activo → 'all': con una sola cuenta seleccionada, la gente del
+  // otro local no carga y la app no puede cruzar horarios ni comparar fuentes.
+  const wsAntes = decodificar(await db.get(claveDe('jibble_active_workspace')).catch(() => null))
   await db.batch([
     { type: 'put', key: claveDe('jibble_attendance_bio_v1'), value: codificar(JSON.stringify(bio)) },
     { type: 'put', key: claveDe('jibble_turnos_v1'), value: codificar(JSON.stringify(turnos)) },
+    { type: 'put', key: claveDe('jibble_active_workspace'), value: codificar('all') },
   ])
+  if (wsAntes && wsAntes !== 'all') console.log(`  ✓ Workspace activo: '${wsAntes}' → 'all' (ver ambas cuentas Jibble)`)
 
   // Verificación por relectura
   const bioCheck = await leerKey('jibble_attendance_bio_v1')

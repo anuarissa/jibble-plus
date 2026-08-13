@@ -13,7 +13,9 @@ import {
 } from 'lucide-react'
 import { addDays, addMonths, format, startOfMonth, endOfMonth, startOfWeek, parseISO } from 'date-fns'
 import { useJibble } from '../hooks/useJibble'
+import { useActiveWorkspace } from '../hooks/useActiveWorkspace'
 import { useCarpetaBiometrico } from '../hooks/useCarpetaBiometrico'
+import { GRUPOS_SOLO_BIOMETRICO } from '../config/employees'
 import { Avatar } from '../components/ui/Avatar'
 import { Skeleton } from '../components/ui/Skeleton'
 import { FuenteBiometricoPanel } from '../components/sueldos/FuenteBiometricoPanel'
@@ -49,6 +51,7 @@ const TOOLTIP_STYLE = {
 
 export default function ResumenSueldos({ cfg }) {
   const data = useJibble(cfg.personOverrides, cfg.config.locales)
+  const ws = useActiveWorkspace()
   const [groupId, setGroupId] = useState('')
   const [modo, setModo] = useState('semana')
   const [offset, setOffset] = useState(0)
@@ -313,6 +316,25 @@ export default function ResumenSueldos({ cfg }) {
         )}
       </div>
 
+      {/* El local vive en OTRA cuenta de Jibble y el filtro activo la excluye:
+          sin su gente no hay horarios ni comparación App/Biométrico. */}
+      {ready && empleadosLocal.length === 0 && !GRUPOS_SOLO_BIOMETRICO.has(grupoActivo) && ws.active !== 'all' && ws.hasMultiple && (
+        <div className="mb-6 rounded-xl border border-warn/40 bg-warn/5 p-4 flex items-center gap-3 flex-wrap" data-testid="banner-otra-cuenta">
+          <AlertTriangle size={20} className="text-warn shrink-0" />
+          <div className="text-sm text-ink-200 flex-1 min-w-[260px]">
+            <span className="font-semibold text-warn">La gente de este local está en otra cuenta de Jibble</span>
+            {' '}— ahora mismo solo estás viendo una cuenta, por eso no aparecen sus empleados, horarios ni la comparación App/Biométrico.
+          </div>
+          <button
+            onClick={() => ws.setActive('all')}
+            className="btn-secondary text-xs whitespace-nowrap"
+            data-testid="btn-todas-cuentas"
+          >
+            Ver todas las cuentas
+          </button>
+        </div>
+      )}
+
       {/* Fuente biométrico: carpeta conectada, meses cargados, nombres sin resolver */}
       {fuenteEfectiva === 'bio' && (
         <FuenteBiometricoPanel
@@ -345,9 +367,11 @@ export default function ResumenSueldos({ cfg }) {
 
       {!resumen || resumen.filas.length === 0 ? (
         <div className="surface p-8 text-center text-ink-300">
-          {fuenteEfectiva === 'bio' && attendanceBio.rows.length === 0
-            ? 'Sin marcas del biométrico en este rango — conecta la carpeta o exporta el mes del aparato.'
-            : 'Sin empleados o datos en este rango.'}
+          {empleadosLocal.length === 0 && !GRUPOS_SOLO_BIOMETRICO.has(grupoActivo) && ws.active !== 'all' && ws.hasMultiple
+            ? 'Este local está en otra cuenta de Jibble — usa "Ver todas las cuentas" (arriba) para cargar a su gente.'
+            : fuenteEfectiva === 'bio' && attendanceBio.rows.length === 0
+              ? 'Sin marcas del biométrico en este rango — conecta la carpeta o exporta el mes del aparato.'
+              : 'Sin empleados o datos en este rango.'}
         </div>
       ) : (
         <>

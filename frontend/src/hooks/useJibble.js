@@ -5,7 +5,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { format, addDays } from 'date-fns'
 import * as jibble from '../api/jibble'
-import { getScheduleForPerson, shouldSkipPerson, resolveGroupId, resolveCargo, EMPLOYEE_OVERRIDES, esPersonaDummy, localOculto } from '../config/employees'
+import { getScheduleForPerson, shouldSkipPerson, resolveGroupId, resolveCargo, EMPLOYEE_OVERRIDES, esPersonaDummy, localOculto, GRUPOS_SOLO_BIOMETRICO } from '../config/employees'
 import { useActiveWorkspace } from './useActiveWorkspace'
 import { personasSinteticas } from '../utils/biometrico'
 import { readBio, useBioVersion } from '../utils/biometrico-store'
@@ -108,6 +108,10 @@ export function useJibble(personOverrides = {}, locales = {}) {
     const bio = readBio()
     const sinteticos = []
     for (const groupId of Object.keys(bio)) {
+      // SOLO locales explícitamente sin cuenta Jibble. Un local con Jibble puede
+      // venir "vacío" porque el workspace activo excluye su cuenta — inventarle
+      // sintéticos rompería el cruce con turnos/tarifas por personId real.
+      if (!GRUPOS_SOLO_BIOMETRICO.has(groupId)) continue
       if (gruposConGente.has(groupId)) continue
       const porId = new Map()
       for (const mesStr of Object.keys(bio[groupId]).sort()) {

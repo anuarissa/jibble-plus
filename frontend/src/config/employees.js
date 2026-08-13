@@ -164,6 +164,15 @@ export const WORKSPACE_DEFAULT_GROUP = {
   B: GROUP_IDS.SBARRO_HUPER,
 }
 
+// Locales SIN cuenta Jibble: su personal existe SOLO en el biométrico físico
+// (personas sintéticas). Lista EXPLÍCITA a propósito: si un local con cuenta
+// Jibble no muestra gente (p.ej. el workspace activo excluye su cuenta), NO se
+// deben inventar sintéticos — eso rompería el cruce con turnos/tarifas por
+// personId. Agregar aquí futuros locales solo-biométrico.
+export const GRUPOS_SOLO_BIOMETRICO = new Set([
+  GROUP_IDS.TUESDAY,
+])
+
 // Usuarios "dummy" de Jibble (cuentas del local, no personas reales) — nunca
 // aparecen en la app. Se matchean por nombre normalizado porque su personId
 // varía según el workspace.
