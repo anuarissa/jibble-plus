@@ -3,7 +3,7 @@
 // multas Bs, FALTAS (debía venir y no vino, con fechas), no-registro, extras
 // y total a pagar. Filtros: local, Día/Semana/Mes/Rango libre y por empleado.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
@@ -23,6 +23,7 @@ import { resumenSueldos } from '../utils/resumen-sueldos'
 import { MODELO_MENSUAL_DEFAULT } from '../utils/payroll'
 import { celdaToRow, comentarioAnomalia } from '../utils/stats'
 import { resolverPersonasBio, marcasToAttendance } from '../utils/biometrico'
+import { exportLiquidacionEmpleado, multaDelDia, noRegistroDelDia } from '../utils/liquidacion-empleado'
 import { marcasEnRango, personasBioDeLocal, mesesConDatos, localesConBio, useBioVersion } from '../utils/biometrico-store'
 import { getAliases, setAlias } from '../utils/carpeta-horarios'
 import { asumirSemanasFaltantes, isoWeekKey } from '../utils/turnos'
@@ -537,6 +538,9 @@ export default function ResumenSueldos({ cfg }) {
                         abierto={abierto}
                         onToggle={() => setExpandido(abierto ? null : f.personId)}
                         nombreLocal={nombreLocal}
+                        rangoLabel={rangoLabel}
+                        fuente={fuenteEfectiva}
+                        modeloMensual={modeloMensual}
                         aprobarExtra={cfg.aprobarExtra}
                         revertirExtra={cfg.revertirExtra}
                       />
@@ -609,7 +613,26 @@ function TooltipDia({ active, payload, label }) {
   )
 }
 
-function FilaEmpleado({ f, abierto, onToggle, nombreLocal, aprobarExtra, revertirExtra }) {
+function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, modeloMensual, aprobarExtra, revertirExtra }) {
+  // Filtro del detalle diario: qué días generaron cada descuento y por qué.
+  // El componente NO se desmonta al colapsar → resetear al cerrar.
+  const [filtroDetalle, setFiltroDetalle] = useState('todos')
+  useEffect(() => { if (!abierto) setFiltroDetalle('todos') }, [abierto])
+
+  const cellsVisibles = f.cells.filter(c => !(c.state === 'idle' && !c.falto && !c.sinHorario))
+  const bsRetrasos = cellsVisibles.reduce((a, c) => a + multaDelDia(c), 0)
+  const categorias = [
+    { id: 'todos', label: `Todos · ${cellsVisibles.length} días`, test: () => true },
+    { id: 'retrasos', label: `Retrasos · −Bs ${bsRetrasos}`, test: c => c.mins > 0 && c.mins <= 180 },
+    { id: 'noRegistro', label: `No marcó · −Bs ${f.descuentoNoRegistro}`, test: c => c.registroIncompleto },
+    { id: 'faltas', label: `Faltas`, test: c => c.falto },
+    { id: 'extras', label: `Extras`, test: c => !c.anomalia && (c.extraAprobable > 0 || c.minExtraComputado > 0) },
+    { id: 'tempranas', label: `Llegó antes`, test: c => !c.anomalia && c.revisarTemprano },
+    { id: 'revisar', label: `A revisar`, test: c => c.anomalia },
+  ].map(cat => ({ ...cat, count: cat.id === 'todos' ? cellsVisibles.length : cellsVisibles.filter(cat.test).length }))
+  const catActiva = categorias.find(c => c.id === filtroDetalle) || categorias[0]
+  const cellsFiltradas = filtroDetalle === 'todos' ? cellsVisibles : cellsVisibles.filter(catActiva.test)
+
   return (
     <>
       <tr onClick={onToggle} className="border-t border-white/5 hover:bg-bg-700/30 transition cursor-pointer">
@@ -683,6 +706,35 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal, aprobarExtra, reverti
                 </span>
               </div>
             )}
+            {/* Filtros: qué días exactos generaron cada descuento / señal */}
+            <div className="mb-3 flex items-center gap-1.5 flex-wrap" data-testid="filtro-detalle">
+              {categorias.filter(cat => cat.count > 0).map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setFiltroDetalle(cat.id)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-colors focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent active:opacity-70 ${
+                    filtroDetalle === cat.id
+                      ? 'bg-accent text-white border-accent shadow-glow'
+                      : cat.id === 'retrasos' || cat.id === 'noRegistro' || cat.id === 'faltas' || cat.id === 'revisar'
+                        ? 'border-bad/40 text-bad hover:bg-bad/10'
+                        : cat.id === 'todos'
+                          ? 'border-white/15 text-ink-200 hover:text-ink-50 hover:border-white/30'
+                          : 'border-warn/40 text-warn hover:bg-warn/10'
+                  }`}
+                  title={cat.id === 'todos' ? 'Ver todos los días' : `Ver solo los días de: ${cat.label}`}
+                >
+                  {cat.label}{cat.id !== 'todos' ? ` · ${cat.count} día${cat.count > 1 ? 's' : ''}` : ''}
+                </button>
+              ))}
+              <button
+                onClick={e => { e.stopPropagation(); exportLiquidacionEmpleado({ fila: f, nombreLocal, rangoLabel, fuente, modeloMensual }) }}
+                className="ml-auto btn-secondary text-[11px] whitespace-nowrap"
+                data-testid="btn-excel-empleado"
+                title={`Liquidación imprimible de ${f.fullName}: resumen del pago + día a día con cada descuento`}
+              >
+                <FileSpreadsheet size={13} /> Excel de {f.fullName.split(' ')[0]}
+              </button>
+            </div>
             <div className="overflow-x-auto scrollbar-thin">
               <table className="w-full text-xs min-w-[900px]">
                 <thead>
@@ -696,11 +748,15 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal, aprobarExtra, reverti
                     <th className="pb-2 font-medium text-right">Salida real</th>
                     <th className="pb-2 font-medium text-right">Min extra</th>
                     <th className="pb-2 font-medium text-right">Horas</th>
+                    <th className="pb-2 font-medium text-right">Desc. Bs</th>
                     <th className="pb-2 font-medium pl-3">Comentario</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {f.cells.filter(c => !(c.state === 'idle' && !c.falto && !c.sinHorario)).map(c => {
+                  {cellsFiltradas.length === 0 && (
+                    <tr><td colSpan={11} className="py-3 text-ink-400">Sin días en esta categoría.</td></tr>
+                  )}
+                  {cellsFiltradas.map(c => {
                     const row = celdaToRow(f.empleado, c, nombreLocal)
                     const comentario = comentarioAnomalia(c)
                     // Rojo = algo no cuadra o no vino: falta, anomalía o día sin horario.
@@ -742,6 +798,11 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal, aprobarExtra, reverti
                           {c.anomalia
                             ? (c.horasPagables > 0 ? `${c.horasPagables.toFixed(2)}*` : '—')
                             : (row['Horas trabajadas'] || '—')}
+                        </td>
+                        <td className="py-1.5 text-right whitespace-nowrap" title={multaDelDia(c) + noRegistroDelDia(c) > 0 ? `${multaDelDia(c) ? `Retraso de ${c.mins} min: −Bs ${multaDelDia(c)}` : ''}${multaDelDia(c) && noRegistroDelDia(c) ? ' · ' : ''}${noRegistroDelDia(c) ? `No marcó entrada o salida: −Bs ${noRegistroDelDia(c)}` : ''}` : undefined}>
+                          {multaDelDia(c) + noRegistroDelDia(c) > 0
+                            ? <span className="text-bad font-medium">−Bs {multaDelDia(c) + noRegistroDelDia(c)}</span>
+                            : <span className="text-ink-400">—</span>}
                         </td>
                         <td className={`py-1.5 pl-3 ${enRojo || c.sinHorario ? 'text-bad' : 'text-ink-400'}`}>
                           {[
