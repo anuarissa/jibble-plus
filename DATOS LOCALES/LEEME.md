@@ -41,6 +41,28 @@ DATOS LOCALES\
 4. Si aparece el panel **"Nombres sin empleado"**, asignar cada nombre del aparato
    a su empleado (o "Ignorar siempre") — se hace una sola vez.
 
+## Compartir con el gerente y otros dispositivos
+
+Los datos que cargas en TU PC (biométrico, horarios, aprobaciones, tarifas) se
+comparten con un comando:
+
+- ════════ PUBLICAR DATOS (→ todos los dispositivos con la contraseña) ════════
+  Cerrando Edge (autorizado — las pestañas se restauran al reabrir)…
+  ✓ Backup del Local Storage → C:UsersanuarOneDriveAnuarJIBBLE APP ASISTENCIADATOS LOCALES.backupsleveldb-2026-08-13T18-26-02-880Z
+  ✓ Leído: jibble_attendance_bio_v1, jibble_turnos_v1, jibble_alias_nombres_v1, jibble_person_overrides_v1, jibble_condonaciones_v1, jibble_extras_aprobadas_v1, locales
+  ✓ Cifrado (AES-256-GCM, llave derivada de la contraseña): 370 KB → C:UsersanuarOneDriveAnuarJIBBLE APP ASISTENCIArontendpublicdatos-publicados.enc
+  ✓ Subido — Vercel despliega en ~1 min y todos los dispositivos lo reciben al refrescar.
+
+✓ Listo. → cierra y reabre tu Edge, cifra los datos
+  con la contraseña de la app y los sube con el deploy (~1 min).
+- Cualquier dispositivo que entre con la contraseña (celular incluido) los
+  recibe SOLO al refrescar la página. No hay que conectar carpetas ahí.
+- La contraseña es UNA para todos — no existe una contraseña por local.
+- Lo que NUNCA viaja: tus preferencias de vista (locales ocultos), settings
+  y la sesión. Cada dispositivo mantiene lo suyo.
+
+Correlo después de cargar un mes nuevo o de aprobar extras.
+
 ## Reportes por consola (sin navegador)
 
 - `node scripts/reporte-mensual.mjs 2026-07` → planillas App y Biométrico de cada local
