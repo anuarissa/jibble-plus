@@ -137,8 +137,8 @@ export function turnosDeCarpeta(carpeta, empleados, groupId, desdeSemana, aliase
 // Nombres del cuaderno de Tuesday que el matcher no resuelve contra el biométrico:
 // GABRIELA = GABY (id 52); el resto no tiene marcas en el aparato → IGNORAR (salen
 // listados igual en el cuadre para revisión).
-const ALIAS_GERENTE_TUESDAY = { gabriela: 52 }
-const TUESDAY_SIN_BIOMETRICO = ['pedro', 'israel', 'fernando ticona', 'fernando', 'daniel', 'katty']
+export const ALIAS_GERENTE_TUESDAY = { gabriela: 52 }
+export const TUESDAY_SIN_BIOMETRICO = ['pedro', 'israel', 'fernando ticona', 'fernando', 'daniel', 'katty']
 
 // Busca exports del biométrico (nombre con "biometrico", .xls/.xlsx) en la carpeta
 // y sus subcarpetas (1 nivel — Tuesday los guarda en "<NN MES> SUELDOS 2026\").
