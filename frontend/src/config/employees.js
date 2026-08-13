@@ -171,6 +171,7 @@ export const WORKSPACE_DEFAULT_GROUP = {
 // personId. Agregar aquí futuros locales solo-biométrico.
 export const GRUPOS_SOLO_BIOMETRICO = new Set([
   GROUP_IDS.TUESDAY,
+  GROUP_IDS.SOS_POLLO,   // biométrico pendiente — el día que llegue su export, funciona solo
 ])
 
 // Usuarios "dummy" de Jibble (cuentas del local, no personas reales) — nunca
@@ -184,10 +185,11 @@ export function esPersonaDummy(fullName) {
 // Locales ocultos por defecto en todas las vistas (decisión Anuar Jul-2026:
 // el panel principal muestra solo Sbarro América y Sbarro Huper). El toggle
 // del ojo en Configuración puede revertirlo (hidden:false explícito gana).
+// Solo OFICINAS queda oculto por default (pedido de Anuar 13-ago: TUESDAY y SOS
+// deben aparecer como opción en TODOS los dispositivos, tengan o no datos aún).
+// El flag explícito del usuario (ojo en Configuración) siempre gana.
 const DEFAULT_HIDDEN_GROUPS = new Set([
-  GROUP_IDS.SOS_POLLO,
   GROUP_IDS.OFICINAS,
-  GROUP_IDS.TUESDAY,
 ])
 
 // Resuelve si un local está oculto: flag explícito del usuario > default.

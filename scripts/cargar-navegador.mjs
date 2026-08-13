@@ -19,31 +19,17 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import { pathToFileURL, fileURLToPath } from 'node:url'
-import { spawnSync, spawn } from 'node:child_process'
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const require = createRequire(path.join(RAIZ, 'frontend', 'package.json'))
 const esbuild = require('esbuild')
-const { ClassicLevel } = require('classic-level')
 
-const ORIGEN = 'https://jibble-plus.vercel.app'
-const LEVELDB = 'C:/Users/anuar/AppData/Local/Microsoft/Edge/User Data/Default/Local Storage/leveldb'
-const EDGE_EXE = ['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  'C:/Program Files/Microsoft/Edge/Application/msedge.exe'].find(p => fs.existsSync(p))
+import { ORIGEN, claveDe, decodificar, codificar, cerrarEdge, abrirEdge, backupLevelDB, abrirDB, leerKeyJSON } from './leveldb-edge.mjs'
 
 const mesArg = process.argv[2]
 const mes = /^\d{4}-\d{2}$/.test(mesArg || '') ? mesArg : '2026-07'
 if (mesArg && !/^\d{4}-\d{2}$/.test(mesArg)) console.error(`Mes inválido "${mesArg}" — usando 2026-07.`)
 
-// Registro de localStorage en el leveldb de Chromium:
-//   key   = "_<origen>\x00\x01<nombreKey>"   (latin1)
-//   value = "\x00" + UTF-16LE | "\x01" + latin1
-const claveDe = nombre => Buffer.concat([Buffer.from(`_${ORIGEN}\u0000\u0001`, 'latin1'), Buffer.from(nombre, 'latin1')])
-const decodificar = buf => {
-  if (!buf || !buf.length) return null
-  return buf[0] === 0 ? buf.slice(1).toString('utf16le') : buf.slice(1).toString('latin1')
-}
-const codificar = str => Buffer.concat([Buffer.from([0]), Buffer.from(str, 'utf16le')])
 
 // 1) Seed desde disco (bundle del core con esbuild, mismo patrón que los demás scripts)
 const outDir = path.join(RAIZ, 'scripts', '.build')
@@ -66,29 +52,17 @@ if (!Object.keys(seed.bioStore).length) {
   process.exit(1)
 }
 
-// 2) Cerrar Edge (autorizado). Startup boost lo revive → matar árbol en loop.
-const edgeVivo = () => spawnSync('tasklist', ['/FI', 'IMAGENAME eq msedge.exe'], { encoding: 'utf8' }).stdout.includes('msedge.exe')
-if (edgeVivo()) console.log('  Cerrando Edge (autorizado — las pestañas se restauran al reabrir)…')
-for (let intento = 0; intento < 6 && edgeVivo(); intento++) {
-  spawnSync('taskkill', ['/F', '/T', '/IM', 'msedge.exe'], { encoding: 'utf8' })
-  await new Promise(r => setTimeout(r, 1500))
-}
-if (edgeVivo()) { console.error('  ✗ Edge sigue corriendo. Ciérralo a mano y vuelve a correr.'); process.exit(1) }
+// 2) Cerrar Edge (autorizado — helper compartido con loop anti Startup-boost)
+await cerrarEdge()
 
 // 3) BACKUP completo de la carpeta Local Storage (rollback total posible)
-const ts = new Date().toISOString().replace(/[:.]/g, '-')
-const dirBackup = path.join(RAIZ, 'DATOS LOCALES', '.backups', `leveldb-${ts}`)
-fs.mkdirSync(dirBackup, { recursive: true })
-fs.cpSync(LEVELDB, dirBackup, { recursive: true })
+const dirBackup = backupLevelDB(RAIZ)
 console.log(`  ✓ Backup completo del Local Storage → ${dirBackup}`)
 
 // 4) MERGE conservador escribiendo en el LevelDB
-const db = new ClassicLevel(LEVELDB, { keyEncoding: 'buffer', valueEncoding: 'buffer', createIfMissing: false })
-await db.open()
+const db = await abrirDB(RAIZ)
 try {
-  const leerKey = async nombre => {
-    try { return JSON.parse(decodificar(await db.get(claveDe(nombre)))) || {} } catch { return {} }
-  }
+  const leerKey = async nombre => (await leerKeyJSON(db, nombre)) || {}
   // sanity: el origen debe existir en este perfil (la app ya usada ahí)
   const config = await leerKey('jibble_app_config_v1')
   if (!config.setupComplete) console.log('  ⚠ Este perfil no tenía la app configurada — se cargan los datos igual.')
@@ -126,10 +100,6 @@ try {
 }
 
 // 5) Reabrir Edge en la página de Sueldos
-if (EDGE_EXE) {
-  spawn('cmd', ['/c', 'start', '', 'msedge', ORIGEN + '/sueldos'], { detached: true, stdio: 'ignore' }).unref()
-  console.log('\n✓ Listo: Edge reabierto en Sueldos con los datos cargados.')
-} else {
-  console.log('\n✓ Datos cargados. Abre Edge en ' + ORIGEN + '/sueldos')
-}
+if (abrirEdge()) console.log('\n✓ Listo: Edge reabierto en Sueldos con los datos cargados.')
+else console.log('\n✓ Datos cargados. Abre Edge en ' + ORIGEN + '/sueldos')
 console.log(`  Para revertir: cerrar Edge y copiar de vuelta ${dirBackup} sobre la carpeta leveldb.`)

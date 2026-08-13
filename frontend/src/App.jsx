@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useLocalConfig } from './hooks/useLocalConfig'
+import { useDatosPublicados } from './hooks/useDatosPublicados'
 import Layout from './components/layout/Layout'
 import Login from './pages/Login'
 import Setup from './pages/Setup'
@@ -16,6 +17,9 @@ import { getSessionToken, getHealth } from './api/jibble'
 export default function App() {
   const cfg = useLocalConfig()
   const [authed, setAuthed] = useState(() => !!getSessionToken())
+  // Datos publicados desde el PC de Anuar (blob cifrado en el deploy) → merge local.
+  // Se re-intenta al loguear (recién ahí existe el token que descifra).
+  useDatosPublicados(authed)
   const [needsAuth, setNeedsAuth] = useState(null) // null = unknown, true/false una vez chequeado
 
   // Verificar si la app requiere auth (APP_PASSWORD configurada en Vercel)
