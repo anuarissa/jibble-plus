@@ -613,6 +613,62 @@ function TooltipDia({ active, payload, label }) {
   )
 }
 
+// Celda de extras del detalle diario. Regla de la casa (ago-2026 v2): quedarse
+// >15 min tras la salida = extra aprobable; si se aprueba se pagan TODOS los
+// minutos (incluidos los primeros 15) y se puede aprobar PARCIAL ("de tus 45
+// te apruebo 30") con el input.
+function CeldaExtra({ c, aprobarExtra, revertirExtra }) {
+  const [minutos, setMinutos] = useState('')
+  if (c.anomalia || !c.extraKey) return <span className="text-ink-400">—</span>
+
+  if (c.extraAprobada && c.minExtraComputado > 0) {
+    const parcial = c.minExtraComputado < c.extraAprobable
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span className={parcial ? 'text-warn font-medium' : 'text-good font-medium'}
+          title={parcial ? `Aprobaste ${c.minExtraComputado} de los ${c.extraAprobable} min que se quedó — el resto sigue pendiente` : `Aprobado completo: ${c.minExtraComputado} min pagados`}>
+          +{c.minExtraComputado}{parcial ? ` de ${c.extraAprobable}` : ''} ✓
+        </span>
+        <button
+          onClick={e => { e.stopPropagation(); revertirExtra(c.extraKey) }}
+          className="text-[10px] px-1.5 py-0.5 rounded-md border border-white/10 text-ink-300 hover:text-ink-50 hover:border-white/25 focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent active:opacity-70 transition-colors"
+          title="Quitar la aprobación: estos minutos dejan de pagarse (puedes volver a aprobar otra cantidad)"
+        >Quitar</button>
+      </span>
+    )
+  }
+
+  if (c.extraAprobable > 0) {
+    const valor = minutos === '' ? c.extraAprobable : minutos
+    const clamped = Math.max(1, Math.min(Number(valor) || c.extraAprobable, c.extraAprobable))
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span className="text-warn font-medium" title="Se quedó después de su salida programada — solo se paga lo que apruebes (todo o una parte)">
+          {c.extraAprobable} min
+        </span>
+        <input
+          type="number"
+          min={1}
+          max={c.extraAprobable}
+          value={valor}
+          onChange={e => setMinutos(e.target.value)}
+          onClick={e => e.stopPropagation()}
+          className="w-14 px-1.5 py-0.5 text-right text-[11px] rounded-md bg-bg-700/70 border border-warn/40 text-ink-50 focus:outline-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-warn"
+          title={`Cuántos minutos aprobar (máx. ${c.extraAprobable})`}
+          data-testid="input-min-extra"
+        />
+        <button
+          onClick={e => { e.stopPropagation(); aprobarExtra(c.extraKey, clamped); setMinutos('') }}
+          className="text-[10px] px-1.5 py-0.5 rounded-md bg-warn/15 border border-warn/40 text-warn hover:bg-warn/25 focus-visible:outline focus-visible:outline-1 focus-visible:outline-warn active:opacity-70 transition-colors font-medium"
+          title={`Aprobar ${clamped} min (se pagan completos, incluidos los primeros 15)`}
+        >Aprobar</button>
+      </span>
+    )
+  }
+
+  return <span className="text-ink-400">—</span>
+}
+
 function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, modeloMensual, aprobarExtra, revertirExtra }) {
   // Filtro del detalle diario: qué días generaron cada descuento y por qué.
   // El componente NO se desmonta al colapsar → resetear al cerrar.
@@ -771,28 +827,7 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, m
                         <td className="py-1.5 text-right font-mono text-ink-300">{row['Programado salida'] || '—'}</td>
                         <td className="py-1.5 text-right font-mono text-ink-100">{row['Salida real'] || '—'}</td>
                         <td className="py-1.5 text-right whitespace-nowrap">
-                          {c.anomalia || !c.extraKey ? '—'
-                            : c.extraAprobada && c.minExtraComputado > 0 ? (
-                              <span className="inline-flex items-center gap-1.5">
-                                <span className="text-good font-medium">+{c.minExtraComputado} ✓</span>
-                                <button
-                                  onClick={e => { e.stopPropagation(); revertirExtra(c.extraKey) }}
-                                  className="text-[10px] px-1.5 py-0.5 rounded-md border border-white/10 text-ink-300 hover:text-ink-50 hover:border-white/25 focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent active:opacity-70 transition-colors"
-                                  title="Quitar la aprobación: estos minutos dejan de pagarse"
-                                >Quitar</button>
-                              </span>
-                            ) : c.extraAprobable > 0 ? (
-                              <span className="inline-flex items-center gap-1.5">
-                                <span className="text-warn font-medium" title={`Se quedó ${Math.max(0, c.minSalidaDiff ?? 0)} min después de su salida programada — se paga desde el minuto 16 SOLO si lo apruebas`}>
-                                  {c.extraAprobable} por aprobar
-                                </span>
-                                <button
-                                  onClick={e => { e.stopPropagation(); aprobarExtra(c.extraKey, c.extraAprobable) }}
-                                  className="text-[10px] px-1.5 py-0.5 rounded-md bg-warn/15 border border-warn/40 text-warn hover:bg-warn/25 focus-visible:outline focus-visible:outline-1 focus-visible:outline-warn active:opacity-70 transition-colors font-medium"
-                                  title={`Aprobar ${c.extraAprobable} min extra (se pagan)`}
-                                >Aprobar</button>
-                              </span>
-                            ) : '—'}
+                          <CeldaExtra c={c} aprobarExtra={aprobarExtra} revertirExtra={revertirExtra} />
                         </td>
                         <td className="py-1.5 text-right font-mono" title={c.anomalia ? 'Día anómalo: se muestran las horas PAGABLES (programadas), no las fichadas' : undefined}>
                           {c.anomalia

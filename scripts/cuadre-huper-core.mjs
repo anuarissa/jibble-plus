@@ -401,11 +401,11 @@ Estas son TODAS las diferencias (${totDiscrep} días):</p>
 
 <h2><span class="num">3.</span> Señales de revisión — antes de aprobar la planilla</h2>
 <p class="nota">Reglas de la casa: llegar antes no suma (ventana arranca en la hora programada) y quedarse después
-no se paga salvo aprobación tuya (desde el minuto 16). Aprueba o descarta en la web → Sueldos → detalle del empleado.</p>
+no se paga salvo aprobación tuya — al aprobar se pagan TODOS los minutos (incluidos los primeros 15) y puedes aprobar solo una parte. Aprueba o descarta en la web → Sueldos → detalle del empleado.</p>
 ${filasExtraPend.length ? `
 <h3 style="font-size:13px;margin-top:12px">Extras pendientes de aprobación (${filasExtraPend.length} días · ${filasExtraPend.reduce((a, x) => a + x.aprobable, 0)} min)</h3>
 <table>
-  <tr><th>Empleado</th><th>Día</th><th class="n">Salida prog.</th><th class="n">Marcó salida</th><th class="n">Se quedó</th><th class="n">Aprobable (min 16+)</th><th class="n">Si apruebas</th></tr>
+  <tr><th>Empleado</th><th>Día</th><th class="n">Salida prog.</th><th class="n">Marcó salida</th><th class="n">Se quedó</th><th class="n">Aprobable (completo)</th><th class="n">Si apruebas</th></tr>
   ${filasExtraPend.map(x => `<tr>
     <td>${esc(x.nombre)}</td><td>${fmtDia(x.dia)}</td><td class="n">${esc(x.progFin)}</td><td class="n">${esc(x.realFin)}</td>
     <td class="n">${x.seQuedo} min</td><td class="n warn"><b>${x.aprobable} min</b></td><td class="n">${bsF(x.aprobable / 60 * 13.75)}</td>
@@ -460,7 +460,7 @@ programada) + extras que apruebes a 13,75 − retrasos (arriba, día por día) �
   Con el kiosco (una sola fuente de marcado) y las aprobaciones al día, ambos números convergen.
 </div>
 
-<p class="firma">Cuadre generado automáticamente · reglas: sueldo ref. Bs 3.300 / 208 h/mes (Bs 15,865/h) · extras aprobadas Bs 13,75/h desde el minuto 16 ·
+<p class="firma">Cuadre generado automáticamente · reglas: sueldo ref. Bs 3.300 / 208 h/mes (Bs 15,865/h) · extras aprobadas Bs 13,75/h (al aprobar se pagan TODOS los minutos; se puede aprobar parcial) ·
 llegar antes no suma (≥30 min antes = revisar) · multa retraso escalonada · no-registro Bs 20/día · ${esc(mesStr)}</p>
 
 </main></body></html>`

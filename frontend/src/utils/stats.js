@@ -203,7 +203,9 @@ function resolverDiaPartido({ segments, fichajesDelDia, condonaciones, extrasApr
   if (algunaSinSalida) salidaState = 'sinSalida'
   else if (algunaSinEntrada) salidaState = 'sinEntrada'
   else if (clockOut) {
-    const diff = minutosDiff(ultimaSeg.endTime, clockOut)
+    let diff = minutosDiff(ultimaSeg.endTime, clockOut)
+    // Cierre pasada la medianoche (ver comentario en resolverDia): −12h+ = +X min después.
+    if (diff != null && diff < -720) diff += 1440
     if (diff != null) {
       minSalidaDiff = diff
       if (diff > EXTRA_UMBRAL) salidaState = 'extras'
@@ -227,12 +229,14 @@ function resolverDiaPartido({ segments, fichajesDelDia, condonaciones, extrasApr
 
   // REGLAS DE LA CASA (Anuar, ago-2026): igual que en resolverDia —
   // lo llegado antes y lo quedado después del último tramo NO se paga;
-  // >15 min después = extra aprobable (desde el minuto 16, si Anuar aprueba).
+  // >15 min después = extra aprobable (se paga COMPLETO si Anuar aprueba,
+  // con opción de aprobar parcial).
   const revisarTemprano = minAntes >= 30
   const minDespues = Math.max(0, minSalidaDiff ?? 0)
-  const extraAprobable = minDespues > 15 ? minDespues - 15 : 0
-  const extraAprobada = !!(ultima && extrasAprobadas?.[ultima.id]?.aprobada)
-  const minExtraAprobado = extraAprobada ? extraAprobable : 0
+  const extraAprobable = minDespues > 15 ? minDespues : 0
+  const aprP = ultima ? extrasAprobadas?.[ultima.id] : null
+  const extraAprobada = !!aprP?.aprobada
+  const minExtraAprobado = extraAprobada ? Math.min(aprP.minutos ?? extraAprobable, extraAprobable) : 0
 
   const anomalia = !!(registroIncompleto || horas > 16 || maxMin > 180 || minAntes > 180 ||
     (minSalidaDiff != null && minSalidaDiff < -180))
@@ -386,7 +390,12 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, extrasAproba
   } else if (!tieneEntrada && tieneSalida) {
     salidaState = 'sinEntrada'     // marcó solo salida (sin ingreso)
   } else if (tieneSalida && endTimeProgramado) {
-    const diff = minutosDiff(endTimeProgramado, fich.clockOut)
+    let diff = minutosDiff(endTimeProgramado, fich.clockOut)
+    // CIERRE PASADA LA MEDIANOCHE: minutosDiff ancla la hora programada al día del
+    // timestamp real, así que salir 00:30 con turno hasta 23:00 daba "salió 22h30
+    // antes". Una "salida 12+ h antes" es en realidad +X min DESPUÉS del cierre
+    // → cuenta como quedada (extra aprobable), igual que cualquier otra.
+    if (diff != null && diff < -720) diff += 1440
     if (diff != null) {
       minSalidaDiff = diff
       if (diff > EXTRA_UMBRAL) salidaState = 'extras'
@@ -415,15 +424,17 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, extrasAproba
   // REGLAS DE LA CASA (Anuar, ago-2026):
   // - Llegar ANTES del horario no genera horas (la ventana pagable arranca en la
   //   hora programada). Si llegó ≥30 min antes → marcar para revisión.
-  // - Quedarse DESPUÉS no se paga por defecto. Si se quedó >15 min → queda como
-  //   "extra aprobable" (desde el minuto 16); solo suma si Anuar lo aprueba.
+  // - Quedarse DESPUÉS no se paga por defecto. >15 min = "extra aprobable"; si
+  //   Anuar la aprueba se pagan TODOS los minutos (incluidos los primeros 15), y
+  //   puede aprobar PARCIAL ("de tus 45 min te apruebo 30" → apr.minutos).
   const minAntes = (startTimeProgramado && fich.clockIn)
     ? Math.max(0, -(minutosDiff(startTimeProgramado, fich.clockIn) ?? 0)) : 0
   const revisarTemprano = minAntes >= 30
   const minDespues = Math.max(0, minSalidaDiff ?? 0)
-  const extraAprobable = minDespues > 15 ? minDespues - 15 : 0
-  const extraAprobada = !!extrasAprobadas?.[fich.id]?.aprobada
-  const minExtraAprobado = extraAprobada ? extraAprobable : 0
+  const extraAprobable = minDespues > 15 ? minDespues : 0
+  const apr = extrasAprobadas?.[fich.id]
+  const extraAprobada = !!apr?.aprobada
+  const minExtraAprobado = extraAprobada ? Math.min(apr.minutos ?? extraAprobable, extraAprobable) : 0
 
   // Horas programadas del día (para pagar días con registro incompleto u horas absurdas).
   let horasProgramadas = 0
@@ -472,7 +483,7 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, extrasAproba
     minExtraComputado,
     minAntes,                       // llegó X min antes del horario (no pagados)
     revisarTemprano,                // ≥30 min antes → llamada de atención
-    extraAprobable,                 // min después de salida (desde el 16) que Anuar puede aprobar
+    extraAprobable,                 // min COMPLETOS tras la salida (si >15) que Anuar puede aprobar
     extraAprobada,                  // ya aprobado → suma minExtraComputado
     extraKey: fich.id,              // attendanceId con el que se aprueba el extra
     horasProgramadas,
@@ -561,10 +572,12 @@ export function extrasYRetrasoDeCells(cells) {
       minTarde += c.mins
       if (!c.condonada) multaBs += (c.multaDia != null ? c.multaDia : calcularMulta(c.mins))
     }
-    // Extra solo en días no anómalos (no incompletos)
+    // Extra solo en días no anómalos (no incompletos). Pendiente = lo aprobable
+    // menos lo ya aprobado (cubre no-aprobados y aprobaciones PARCIALES).
     if (!c.anomalia) {
       minExtra += c.minExtraComputado || 0
-      if (c.extraAprobable > 0 && !c.extraAprobada) { minExtraPendiente += c.extraAprobable; diasExtraPendiente++ }
+      const pendiente = (c.extraAprobable || 0) - (c.minExtraComputado || 0)
+      if (pendiente > 0) { minExtraPendiente += pendiente; diasExtraPendiente++ }
       if (c.revisarTemprano) { diasTemprano++; minAntesTotal += c.minAntes || 0 }
     }
     if (c.anomalia) anomalias++

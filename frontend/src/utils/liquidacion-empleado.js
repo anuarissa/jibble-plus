@@ -52,7 +52,7 @@ export function exportLiquidacionEmpleado({ fila, nombreLocal, rangoLabel, fuent
     { Campo: 'Multa por retraso', Valor: '1–10 min: Bs 10 · después +Bs 20 por cada 10 min' },
     { Campo: 'No marcar entrada o salida', Valor: `Bs ${MULTA_NO_REGISTRO} por día` },
     { Campo: 'Llegar antes del horario', Valor: 'No suma horas (la ventana arranca a la hora programada)' },
-    { Campo: 'Quedarse después de la salida', Valor: 'Solo se paga si el encargado lo aprueba (desde el minuto 16)' },
+    { Campo: 'Quedarse después de la salida', Valor: 'Solo se paga lo que el encargado apruebe (todo o una parte); pasada la medianoche cuenta igual' },
     ...(modeloMensual ? [{ Campo: 'Mes completo', Valor: `Bs ${modeloMensual.sueldoCompleto} al cubrir ${modeloMensual.horasCompletas} h; proporcional si no llega; sobre ${modeloMensual.horasCompletas} h a Bs ${modeloMensual.tarifaExtra}/h` }] : []),
   ]
 
@@ -73,7 +73,8 @@ export function exportLiquidacionEmpleado({ fila, nombreLocal, rangoLabel, fuent
         'Prog. salida': row['Programado salida'] || '—',
         'Salida real': row['Salida real'] || '—',
         'Extra aprobado (min)': (!c.anomalia && c.minExtraComputado > 0) ? c.minExtraComputado : '',
-        'Por aprobar (min)': (!c.anomalia && c.extraAprobable > 0 && !c.extraAprobada) ? c.extraAprobable : '',
+        // Pendiente = lo aprobable menos lo ya aprobado (cubre aprobaciones parciales)
+        'Por aprobar (min)': (!c.anomalia && (c.extraAprobable || 0) - (c.minExtraComputado || 0) > 0) ? (c.extraAprobable - (c.minExtraComputado || 0)) : '',
         'Horas pagadas': c.falto ? 0 : r2(c.anomalia ? (c.horasPagables || 0) : (c.horas || 0)),
         'No-registro (Bs)': noReg ? -noReg : '',
         Comentario: comentarioAnomalia(c) || (c.condonada ? 'Retraso condonado — no se cobra.' : ''),

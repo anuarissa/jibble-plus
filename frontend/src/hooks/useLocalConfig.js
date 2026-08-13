@@ -245,7 +245,8 @@ export function useLocalConfig() {
 
   // === EXTRAS APROBADAS ===
   // Regla de la casa: quedarse >15 min después del horario NO se paga salvo que
-  // Anuar lo apruebe (se paga desde el minuto 16). Key = attendance id del fichaje.
+  // Anuar lo apruebe — se pagan TODOS los minutos aprobados (puede ser parcial:
+  // minutos < lo que se quedó). Key = attendance id del fichaje.
   const aprobarExtra = useCallback((attendanceId, minutos = 0) => {
     setExtrasAprobadas(e => ({ ...e, [attendanceId]: { aprobada: true, minutos, fecha: new Date().toISOString() } }))
   }, [])

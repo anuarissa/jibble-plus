@@ -369,7 +369,7 @@ ${filasRetraso.length ? `<table>
 ${filasExtraPend.length ? `
 <h3>Se quedaron después de su salida (${filasExtraPend.length} días · ${filasExtraPend.reduce((a, x) => a + x.aprobable, 0)} min aprobables) — NO se pagan salvo que los apruebes en la web</h3>
 <table>
-  <tr><th>Empleado</th><th>Día</th><th class="n">Salida cuaderno</th><th class="n">Marcó salida</th><th class="n">Se quedó</th><th class="n">Aprobable (min 16+)</th><th class="n">Si apruebas</th></tr>
+  <tr><th>Empleado</th><th>Día</th><th class="n">Salida cuaderno</th><th class="n">Marcó salida</th><th class="n">Se quedó</th><th class="n">Aprobable (completo)</th><th class="n">Si apruebas</th></tr>
   ${filasExtraPend.map(x => `<tr><td>${esc(x.nombre)}</td><td>${fmtDia(x.dia)}</td><td class="n">${esc(x.progFin)}</td><td class="n">${esc(x.realFin)}</td><td class="n">${x.seQuedo} min</td><td class="n warn"><b>${x.aprobable} min</b></td><td class="n">${bsF(x.aprobable / 60 * 13.75)}</td></tr>`).join('')}
 </table>` : '<p class="ok">Sin extras pendientes.</p>'}
 ${filasTempranas.length ? `
@@ -410,7 +410,7 @@ ${Object.keys(descPorNombre).length ? `<table>
     <td class="n">${bsF(totalApp)}</td><td class="n">${bsF(totalBanco)}</td><td></td></tr>
 </table>
 
-<p class="firma">Cuadre generado automáticamente · reglas: sueldo ref. Bs 3.300 / 208 h/mes (Bs 15,865/h) · extras aprobadas Bs 13,75/h desde el minuto 16 ·
+<p class="firma">Cuadre generado automáticamente · reglas: sueldo ref. Bs 3.300 / 208 h/mes (Bs 15,865/h) · extras aprobadas Bs 13,75/h (al aprobar se pagan TODOS los minutos; se puede aprobar parcial) ·
 llegar antes no suma (≥30 min antes = revisar) · multa retraso escalonada · no-registro Bs 20/día · fuentes: biométrico físico + cuaderno del gerente + planilla bancaria · ${esc(mesStr)}</p>
 
 </main></body></html>`
