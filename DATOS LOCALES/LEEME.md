@@ -46,14 +46,7 @@ DATOS LOCALES\
 Los datos que cargas en TU PC (biométrico, horarios, aprobaciones, tarifas) se
 comparten con un comando:
 
-- ════════ PUBLICAR DATOS (→ todos los dispositivos con la contraseña) ════════
-  Cerrando Edge (autorizado — las pestañas se restauran al reabrir)…
-  ✓ Backup del Local Storage → C:UsersanuarOneDriveAnuarJIBBLE APP ASISTENCIADATOS LOCALES.backupsleveldb-2026-08-13T18-26-02-880Z
-  ✓ Leído: jibble_attendance_bio_v1, jibble_turnos_v1, jibble_alias_nombres_v1, jibble_person_overrides_v1, jibble_condonaciones_v1, jibble_extras_aprobadas_v1, locales
-  ✓ Cifrado (AES-256-GCM, llave derivada de la contraseña): 370 KB → C:UsersanuarOneDriveAnuarJIBBLE APP ASISTENCIArontendpublicdatos-publicados.enc
-  ✓ Subido — Vercel despliega en ~1 min y todos los dispositivos lo reciben al refrescar.
-
-✓ Listo. → cierra y reabre tu Edge, cifra los datos
+- `node scripts/publicar-datos.mjs` — cierra y reabre tu Edge, cifra los datos
   con la contraseña de la app y los sube con el deploy (~1 min).
 - Cualquier dispositivo que entre con la contraseña (celular incluido) los
   recibe SOLO al refrescar la página. No hay que conectar carpetas ahí.
