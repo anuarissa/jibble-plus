@@ -49,6 +49,12 @@ export function getHandle(groupId) {
   return idbOp('readonly', store => store.get(groupId))
 }
 
+// Todas las carpetas conectadas. Devuelve las keys crudas del store: `groupId`
+// (carpeta de horarios) y `'bio:'+groupId` (carpeta del biométrico).
+export function listarCarpetas() {
+  return idbOp('readonly', store => store.getAllKeys())
+}
+
 // pickerPrefix distingue funcionalidades (horarios 'hor-', biométrico 'bio-') para
 // que Chrome recuerde la última carpeta de CADA una; storageKey permite que ambas
 // convivan en el mismo store de IndexedDB (biométrico usa 'bio:'+groupId).
@@ -107,6 +113,10 @@ export function setAlias(groupId, nombreExcel, personIdOIgnorar) {
 // Devuelve { aplicarPorSemana, warnings, noEncontrados, archivosLeidos, celdasOk, celdasIgnoradas }
 export async function leerCarpeta(handle, empleados, opts = {}) {
   const archivos = []
+  // Archivos que existen pero no se pudieron leer (bloqueados por Excel abierto,
+  // o solo-nube sin descargar). Se reportan: una recarga fiel NO debe borrar las
+  // semanas que traía un archivo que hoy simplemente no se pudo abrir.
+  const omitidos = []
   for await (const entry of handle.values()) {
     if (entry.kind !== 'file') continue
     if (!/\.xlsx?$/i.test(entry.name)) continue
@@ -114,7 +124,7 @@ export async function leerCarpeta(handle, empleados, opts = {}) {
     try {
       archivos.push(await entry.getFile())
     } catch {
-      // archivo bloqueado o solo-nube sin descargar — se omite en esta pasada
+      omitidos.push(entry.name)
     }
   }
   // Orden ascendente por fecha de modificación → el más reciente pisa semanas repetidas.
@@ -123,6 +133,7 @@ export async function leerCarpeta(handle, empleados, opts = {}) {
   const total = {
     aplicarPorSemana: {}, warnings: [], noEncontrados: [],
     archivosLeidos: [], celdasOk: 0, celdasIgnoradas: 0,
+    archivosOmitidos: omitidos,
   }
   const desdeSemana = isoWeekKey(addDays(new Date(), -7 * SEMANAS_RECIENTES))
   for (const file of archivos) {
@@ -140,8 +151,10 @@ export async function leerCarpeta(handle, empleados, opts = {}) {
         continue
       }
       for (const [wk, porPersona] of Object.entries(r.aplicarPorSemana)) {
-        // Semana repetida entre archivos → la del archivo más reciente reemplaza completa.
-        total.aplicarPorSemana[wk] = porPersona
+        // Semana repetida entre archivos: se MERGEA por persona y el archivo más
+        // reciente pisa a esa persona. (Antes se reemplazaba la semana entera, lo
+        // que borraba a la gente que solo estaba en otro cuaderno de la carpeta.)
+        total.aplicarPorSemana[wk] = { ...(total.aplicarPorSemana[wk] || {}), ...porPersona }
       }
       for (const w of r.warnings) {
         // En sync de carpeta, multi-semana es lo normal y los nombres no
@@ -160,5 +173,28 @@ export async function leerCarpeta(handle, empleados, opts = {}) {
       total.warnings.push(`${file.name}: ${e.message}`)
     }
   }
+  // Rango de semanas que ESTA carpeta cubre hoy (contiguo, de la más vieja a la
+  // más nueva encontrada). Sirve a la recarga fiel para saber en qué semanas
+  // puede borrar: fuera de este rango no hay información, no se toca nada.
+  total.semanasCubiertas = semanasDelRango(Object.keys(total.aplicarPorSemana))
   return total
+}
+
+// ['2026-W27','2026-W30'] → todas las semanas ISO entre la primera y la última.
+export function semanasDelRango(weekKeys) {
+  const keys = (weekKeys || []).filter(Boolean).sort()
+  if (!keys.length) return []
+  const lunesDe = wk => {
+    const [y, w] = wk.split('-W')
+    const ene4 = new Date(Number(y), 0, 4)
+    const lunW1 = new Date(ene4)
+    lunW1.setDate(ene4.getDate() - ((ene4.getDay() + 6) % 7))
+    const d = new Date(lunW1)
+    d.setDate(lunW1.getDate() + (Number(w) - 1) * 7)
+    return d
+  }
+  const out = []
+  const fin = lunesDe(keys[keys.length - 1])
+  for (let d = lunesDe(keys[0]); d <= fin; d.setDate(d.getDate() + 7)) out.push(isoWeekKey(new Date(d)))
+  return out
 }

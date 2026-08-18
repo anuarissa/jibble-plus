@@ -4,6 +4,7 @@
 
 import { FolderOpen, FolderCheck, RefreshCw, X, Fingerprint, AlertTriangle } from 'lucide-react'
 import { format } from 'date-fns'
+import { borrarBioMes } from '../../utils/biometrico-store'
 
 const MESES_CORTO = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 const labelMes = mesStr => {
@@ -12,7 +13,7 @@ const labelMes = mesStr => {
 }
 
 export function FuenteBiometricoPanel({
-  carpeta, meses, noEncontrados, empleadosParaAlias, onAlias, sinDatosEnRango, rangoLabel,
+  carpeta, meses, noEncontrados, empleadosParaAlias, onAlias, sinDatosEnRango, rangoLabel, groupId,
 }) {
   const { soportado, estado, nombreCarpeta, lastSync, resultado } = carpeta
 
@@ -62,9 +63,16 @@ export function FuenteBiometricoPanel({
         {meses.length > 0 && (
           <span className="flex items-center gap-1.5 flex-wrap text-[11px]">
             {meses.map(m => (
-              <span key={m.mesStr} className="badge bg-bg-700/60 border border-white/10 text-ink-200 whitespace-nowrap"
+              <span key={m.mesStr} className="badge bg-bg-700/60 border border-white/10 text-ink-200 whitespace-nowrap inline-flex items-center gap-1"
                 title={`${m.archivo} · ${m.personas} personas · ${m.marcas} días con marcas`}>
                 {labelMes(m.mesStr)} · {m.personas}👤
+                <button
+                  onClick={() => { if (confirm(`¿Quitar ${labelMes(m.mesStr)} del biométrico de este local? (el archivo en tu carpeta no se toca)`)) borrarBioMes(groupId, m.mesStr) }}
+                  className="text-ink-400 hover:text-bad transition-colors"
+                  title="Quitar este mes de la app"
+                >
+                  <X size={11} />
+                </button>
               </span>
             ))}
           </span>

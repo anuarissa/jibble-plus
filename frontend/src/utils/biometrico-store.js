@@ -27,6 +27,18 @@ export function guardarBioMes(groupId, mesStr, { marcas, personas, archivo }) {
   return { ok: true }
 }
 
+// Borra un mes de un local (su archivo ya no está en la carpeta, o se quiere
+// liberar espacio). Devuelve true si existía.
+export function borrarBioMes(groupId, mesStr) {
+  const all = readBio()
+  if (!all[groupId]?.[mesStr]) return false
+  delete all[groupId][mesStr]
+  if (!Object.keys(all[groupId]).length) delete all[groupId]
+  try { localStorage.setItem(KEY_BIO, JSON.stringify(all)) } catch { return false }
+  window.dispatchEvent(new Event(EVENTO))
+  return true
+}
+
 // Personas del local (unión de todos los meses cargados; nombre del mes más nuevo gana)
 export function personasBioDeLocal(groupId) {
   const meses = readBio()[groupId] || {}

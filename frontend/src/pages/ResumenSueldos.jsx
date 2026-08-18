@@ -340,6 +340,7 @@ export default function ResumenSueldos({ cfg }) {
       {fuenteEfectiva === 'bio' && (
         <FuenteBiometricoPanel
           carpeta={carpetaBio}
+          groupId={grupoActivo}
           meses={mesesConDatos(grupoActivo)}
           noEncontrados={attendanceBio.noEncontrados}
           empleadosParaAlias={esLocalBio ? [] : empleadosLocal.filter(p => !p.synthetic)}

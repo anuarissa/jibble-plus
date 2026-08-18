@@ -1,22 +1,13 @@
 // Hook de sincronización de exports del BIOMÉTRICO físico desde una carpeta
-// OneDrive (calcado de useCarpetaHorarios). Diferencias:
-//   - la carpeta puede tener SUBCARPETAS por mes (Tuesday: "07 JULIO SUELDOS 2026\")
-//     → se recorre 1 nivel de profundidad
-//   - solo se leen archivos con "biometrico" en el nombre (.xls/.xlsx); el mes real
-//     sale de la fila "Periodo:" interna del export
-//   - el resultado se guarda en jibble_attendance_bio_v1 (no en turnos)
+// OneDrive (gemelo de useCarpetaHorarios). La lógica vive en
+// utils/sincronizar-carpetas.js — acá solo el estado de la UI.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import * as XLSX from 'xlsx-js-style'
-import {
-  soportaCarpetas, getHandle, conectarCarpeta, desconectarCarpeta,
-  estadoPermiso, pedirPermiso,
-} from '../utils/carpeta-horarios'
-import { parseBiometricoWorkbook } from '../utils/biometrico'
-import { guardarBioMes, mesesConDatos } from '../utils/biometrico-store'
+import { soportaCarpetas, conectarCarpeta, desconectarCarpeta } from '../utils/carpeta-horarios'
+import { sincronizarLocalBiometrico, bioKey } from '../utils/sincronizar-carpetas'
+import { mesesConDatos } from '../utils/biometrico-store'
 
 const KEY_SYNC = 'jibble_carpetas_bio_sync_v1'
-const bioKey = groupId => 'bio:' + groupId
 
 function readSyncInfo() {
   try { return JSON.parse(localStorage.getItem(KEY_SYNC)) || {} } catch { return {} }
@@ -28,74 +19,31 @@ function writeSyncInfo(groupId, info) {
   localStorage.setItem(KEY_SYNC, JSON.stringify(all))
 }
 
-// Junta los archivos "biometrico*.xls(x)" de la carpeta y sus subcarpetas (1 nivel).
-async function archivosBiometrico(handle) {
-  const out = []
-  async function delDir(dir, profundidad) {
-    for await (const entry of dir.values()) {
-      if (entry.kind === 'directory') {
-        if (profundidad < 1) await delDir(entry, profundidad + 1)
-        continue
-      }
-      if (!/\.xlsx?$/i.test(entry.name)) continue
-      if (entry.name.startsWith('~$')) continue
-      if (!/biometric/i.test(entry.name)) continue
-      try { out.push(await entry.getFile()) } catch { /* solo-nube sin descargar */ }
-    }
-  }
-  await delDir(handle, 0)
-  return out.sort((a, b) => a.lastModified - b.lastModified) // el más nuevo pisa el mes repetido
-}
-
 // estado: 'sin-soporte' | 'cargando' | 'sin-carpeta' | 'requiere-permiso' | 'listo' | 'sincronizando' | 'error'
 export function useCarpetaBiometrico({ groupId, onDatosCargados }) {
   const [estado, setEstado] = useState(soportaCarpetas ? 'cargando' : 'sin-soporte')
   const [nombreCarpeta, setNombreCarpeta] = useState(null)
-  const [resultado, setResultado] = useState(null) // { mesesCargados, archivosLeidos, warnings }
+  const [resultado, setResultado] = useState(null)
   const [lastSync, setLastSync] = useState(() => readSyncInfo()[groupId]?.ts || null)
 
   const onDatosRef = useRef(onDatosCargados)
   onDatosRef.current = onDatosCargados
 
-  const sincronizar = useCallback(async ({ conGesto = false } = {}) => {
+  const sincronizar = useCallback(async ({ conGesto = false, fiel = false } = {}) => {
     if (!soportaCarpetas) return null
-    const handle = await getHandle(bioKey(groupId))
-    if (!handle) { setEstado('sin-carpeta'); return null }
-    setNombreCarpeta(handle.name)
-
-    let permiso = await estadoPermiso(handle)
-    if (permiso !== 'granted' && conGesto) permiso = await pedirPermiso(handle)
-    if (permiso !== 'granted') { setEstado('requiere-permiso'); return null }
-
     setEstado('sincronizando')
     try {
-      const archivos = await archivosBiometrico(handle)
-      const warnings = []
-      const mesesCargados = []
-      const archivosLeidos = []
-      let algunDato = false
-      for (const file of archivos) {
-        try {
-          const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' })
-          const r = parseBiometricoWorkbook(wb)
-          if (!r) { warnings.push(`${file.name}: no parece un export del biométrico — omitido`); continue }
-          for (const w of r.warnings) warnings.push(`${file.name}: ${w}`)
-          const res = guardarBioMes(groupId, r.mesStr, { marcas: r.marcas, personas: r.personasBio, archivo: file.name })
-          if (!res.ok) { warnings.push(`${file.name}: ${res.error}`); continue }
-          algunDato = true
-          archivosLeidos.push(file.name)
-          if (!mesesCargados.includes(r.mesStr)) mesesCargados.push(r.mesStr)
-        } catch (e) {
-          warnings.push(`${file.name}: ${e.message}`)
-        }
-      }
-      const res = { mesesCargados: mesesCargados.sort(), archivosLeidos, warnings, meses: mesesConDatos(groupId) }
+      const r = await sincronizarLocalBiometrico(groupId, { conGesto, fiel })
+      if (r.estado === 'sin-carpeta') { setEstado('sin-carpeta'); return null }
+      if (r.estado === 'requiere-permiso') { setEstado('requiere-permiso'); return null }
+      setNombreCarpeta(r.carpeta)
+      const res = { ...r, meses: mesesConDatos(groupId) }
       setResultado(res)
       const ts = Date.now()
       setLastSync(ts)
-      writeSyncInfo(groupId, { ts, carpeta: handle.name, meses: mesesCargados.length, archivos: archivosLeidos.length })
+      writeSyncInfo(groupId, { ts, carpeta: r.carpeta, meses: r.mesesCargados.length, archivos: r.archivosLeidos.length })
       setEstado('listo')
-      if (algunDato) onDatosRef.current?.()
+      if (r.archivosLeidos.length) onDatosRef.current?.()
       return res
     } catch (e) {
       setResultado({ error: e.message })

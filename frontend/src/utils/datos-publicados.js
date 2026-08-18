@@ -43,12 +43,14 @@ export function mergeDatosPublicados(datos) {
     for (const [g, meses] of Object.entries(pub)) out[g] = { ...(out[g] || {}), ...meses }
     return out
   })
-  // Turnos: por semana → por persona (días de esa persona reemplazados)
+  // Turnos: por semana → la persona publicada REEMPLAZA a la local (asignación,
+  // no spread). Si Anuar borró un día del Excel y recargó, el blob manda y el
+  // día no revive; las personas que el blob no trae quedan intactas.
   aplicar('jibble_turnos_v1', (local, pub) => {
     const out = { ...local }
     for (const [wk, porPersona] of Object.entries(pub)) {
       out[wk] = { ...(out[wk] || {}) }
-      for (const [pid, dias] of Object.entries(porPersona)) out[wk][pid] = { ...(out[wk][pid] || {}), ...dias }
+      for (const [pid, dias] of Object.entries(porPersona)) out[wk][pid] = dias
     }
     return out
   })

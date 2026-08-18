@@ -2,12 +2,13 @@
 // Al montar: si hay carpeta conectada y el navegador conserva el permiso,
 // lee y aplica solo (Excel = fuente de verdad). Si el permiso expiró,
 // queda en 'requiere-permiso' y un click en Sincronizar lo re-otorga.
+//
+// La lógica vive en utils/sincronizar-carpetas.js (compartida con el botón
+// global "Recargar Excels"); acá solo se maneja el estado de la UI.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  soportaCarpetas, getHandle, conectarCarpeta, desconectarCarpeta,
-  estadoPermiso, pedirPermiso, leerCarpeta, getAliases,
-} from '../utils/carpeta-horarios'
+import { soportaCarpetas, conectarCarpeta, desconectarCarpeta } from '../utils/carpeta-horarios'
+import { sincronizarLocalHorarios } from '../utils/sincronizar-carpetas'
 import { isoWeekKey } from '../utils/turnos'
 
 const KEY_SYNC = 'jibble_carpetas_sync_v1'
@@ -23,10 +24,10 @@ function writeSyncInfo(groupId, info) {
 }
 
 // estado: 'sin-soporte' | 'cargando' | 'sin-carpeta' | 'requiere-permiso' | 'listo' | 'sincronizando' | 'error'
-export function useCarpetaHorarios({ groupId, empleados, turnos, setTurnosSemana }) {
+export function useCarpetaHorarios({ groupId, empleados, turnos, setTurnosSemana, reemplazarTurnosDeLocal }) {
   const [estado, setEstado] = useState(soportaCarpetas ? 'cargando' : 'sin-soporte')
   const [nombreCarpeta, setNombreCarpeta] = useState(null)
-  const [resultado, setResultado] = useState(null) // { semanasAplicadas, celdasOk, warnings, noEncontrados, archivosLeidos }
+  const [resultado, setResultado] = useState(null)
   const [lastSync, setLastSync] = useState(() => readSyncInfo()[groupId]?.ts || null)
 
   // Refs para usar los valores frescos dentro de callbacks sin re-crear la sync.
@@ -34,66 +35,32 @@ export function useCarpetaHorarios({ groupId, empleados, turnos, setTurnosSemana
   empleadosRef.current = empleados
   const turnosRef = useRef(turnos)
   turnosRef.current = turnos
+  const accionesRef = useRef({ setTurnosSemana, reemplazarTurnosDeLocal })
+  accionesRef.current = { setTurnosSemana, reemplazarTurnosDeLocal }
 
-  const aplicar = useCallback((lectura) => {
-    let semanasAplicadas = 0
-    const semanas = []
-    for (const [wk, datos] of Object.entries(lectura.aplicarPorSemana)) {
-      // No tocar el store si cada celda ya está idéntica (evita re-renders en cada visita).
-      const actual = turnosRef.current?.[wk] || {}
-      const sinCambios = Object.keys(datos).every(pid =>
-        Object.keys(datos[pid]).every(
-          dow => JSON.stringify(actual[pid]?.[dow]) === JSON.stringify(datos[pid][dow])
-        )
-      )
-      if (!sinCambios) {
-        setTurnosSemana(wk, datos)
-        semanasAplicadas++
-      }
-      semanas.push(wk)
-    }
-    return { semanasAplicadas, semanas }
-  }, [setTurnosSemana])
-
-  const sincronizar = useCallback(async ({ conGesto = false } = {}) => {
+  const sincronizar = useCallback(async ({ conGesto = false, fiel = false } = {}) => {
     if (!soportaCarpetas) return null
-    const handle = await getHandle(groupId)
-    if (!handle) { setEstado('sin-carpeta'); return null }
-    setNombreCarpeta(handle.name)
-
-    let permiso = await estadoPermiso(handle)
-    if (permiso !== 'granted' && conGesto) permiso = await pedirPermiso(handle)
-    if (permiso !== 'granted') { setEstado('requiere-permiso'); return null }
-
     setEstado('sincronizando')
     try {
-      const lectura = await leerCarpeta(handle, empleadosRef.current, { aliases: getAliases(groupId) })
-      const { semanasAplicadas, semanas } = aplicar(lectura)
+      const r = await sincronizarLocalHorarios(groupId, empleadosRef.current, accionesRef.current, {
+        conGesto, fiel, turnosActuales: turnosRef.current,
+      })
+      if (r.estado === 'sin-carpeta') { setEstado('sin-carpeta'); return null }
+      if (r.estado === 'requiere-permiso') { setEstado('requiere-permiso'); return null }
+      setNombreCarpeta(r.carpeta)
+
       // Chequeo inverso (clave con la rotación de personal): ¿qué empleados
       // registrados NO aparecen en la última semana que trae el Excel?
-      const semanasOrdenadas = Object.keys(lectura.aplicarPorSemana).sort()
+      const semanasOrdenadas = [...r.semanasDetectadas].sort()
       const ultimaSemana = semanasOrdenadas[semanasOrdenadas.length - 1] || null
       const sinHorario = ultimaSemana
-        ? (empleadosRef.current || [])
-            .filter(e => !lectura.aplicarPorSemana[ultimaSemana]?.[e.id])
-            .map(e => e.fullName)
+        ? (empleadosRef.current || []).filter(e => !turnosRef.current?.[ultimaSemana]?.[e.id]).map(e => e.fullName)
         : []
-      const faltaSemanaActual = !semanasOrdenadas.includes(isoWeekKey(new Date()))
-      const res = {
-        semanasAplicadas,
-        semanasDetectadas: semanas,
-        celdasOk: lectura.celdasOk,
-        warnings: lectura.warnings,
-        noEncontrados: lectura.noEncontrados,
-        archivosLeidos: lectura.archivosLeidos,
-        ultimaSemana,
-        sinHorario,
-        faltaSemanaActual,
-      }
+      const res = { ...r, ultimaSemana, sinHorario, faltaSemanaActual: !semanasOrdenadas.includes(isoWeekKey(new Date())) }
       setResultado(res)
       const ts = Date.now()
       setLastSync(ts)
-      writeSyncInfo(groupId, { ts, carpeta: handle.name, semanas: semanas.length, archivos: lectura.archivosLeidos.length })
+      writeSyncInfo(groupId, { ts, carpeta: r.carpeta, semanas: r.semanasDetectadas.length, archivos: r.archivosLeidos.length })
       setEstado('listo')
       return res
     } catch (e) {
@@ -101,7 +68,7 @@ export function useCarpetaHorarios({ groupId, empleados, turnos, setTurnosSemana
       setEstado('error')
       return null
     }
-  }, [groupId, aplicar])
+  }, [groupId])
 
   const conectar = useCallback(async () => {
     try {

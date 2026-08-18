@@ -41,6 +41,19 @@ DATOS LOCALES\
 4. Si aparece el panel **"Nombres sin empleado"**, asignar cada nombre del aparato
    a su empleado (o "Ignorar siempre") — se hace una sola vez.
 
+## Cuando edites un Excel ya cargado
+
+- En el **Panel de control** hay un botón **"Recargar Excels"**: vuelve a leer los
+  archivos de TODOS los locales (horarios + biométrico) y deja los datos igual a
+  lo que dicen los archivos ahora — **lo que borraste del Excel se borra en la app**.
+- Si dejaste el Excel abierto o OneDrive todavía no lo descargó, esa carpeta
+  **no borra nada** por seguridad: actualiza lo demás y te avisa.
+- También se relee solo cuando vuelves a la pestaña del navegador (ahí solo
+  actualiza y agrega, nunca borra).
+- El detalle carpeta por carpeta está en **Configuración → Carpetas de Excel conectadas**.
+- Después de una recarga, corre `node scripts/publicar-datos.mjs` para que el
+  gerente vea lo mismo.
+
 ## Compartir con el gerente y otros dispositivos
 
 Los datos que cargas en TU PC (biométrico, horarios, aprobaciones, tarifas) se

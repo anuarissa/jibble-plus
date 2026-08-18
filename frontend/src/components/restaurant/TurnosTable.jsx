@@ -37,6 +37,7 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
     empleados,
     turnos: cfg.turnos,
     setTurnosSemana: cfg.setTurnosSemana,
+    reemplazarTurnosDeLocal: cfg.reemplazarTurnosDeLocal,
   })
 
   // Toast solo cuando la sync cambió algo (el auto-sync corre en cada visita).

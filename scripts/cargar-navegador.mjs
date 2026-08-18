@@ -74,7 +74,9 @@ try {
   let semanasTocadas = 0
   for (const [wk, porPersona] of Object.entries(seed.turnos)) {
     turnos[wk] = { ...(turnos[wk] || {}) }
-    for (const [pid, dias] of Object.entries(porPersona)) turnos[wk][pid] = { ...(turnos[wk][pid] || {}), ...dias }
+    // Asignación por persona: lo que dice el Excel manda (si un día se borró del
+    // cuaderno, no revive). Las personas que el Excel no trae quedan intactas.
+    for (const [pid, dias] of Object.entries(porPersona)) turnos[wk][pid] = dias
     semanasTocadas++
   }
 

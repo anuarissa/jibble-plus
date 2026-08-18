@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { clearCache, logout } from '../api/jibble'
 import { Avatar } from '../components/ui/Avatar'
 import { EMPLOYEE_OVERRIDES, localOculto } from '../config/employees'
+import { CarpetasExcelPanel } from '../components/CarpetasExcelPanel'
 
 const COLORS = ['#ff6b35', '#dc2626', '#0ea5e9', '#eab308', '#a855f7', '#10b981', '#ec4899', '#f97316']
 const EMOJIS = ['🍔', '🍕', '🍗', '🌮', '🥡', '🍣', '🥪', '🍝', '🥗', '🍦', '☕', '🥐']
@@ -95,6 +96,13 @@ export default function Settings({ cfg }) {
             )
           })}
         </div>
+      </Section>
+
+      <Section
+        title="Carpetas de Excel conectadas"
+        subtitle="De dónde salen los horarios y las marcas del biométrico de cada local. Recárgalas cuando edites los archivos — o usa 'Recargar Excels' en el Panel de control."
+      >
+        <CarpetasExcelPanel cfg={cfg} groups={data.groupsAll} people={data.peopleAll} />
       </Section>
 
       <Section title="Reglas de tardanza y planilla" subtitle="Aplican a los cálculos de toda la app">

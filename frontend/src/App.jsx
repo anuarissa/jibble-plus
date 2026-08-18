@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useLocalConfig } from './hooks/useLocalConfig'
 import { useDatosPublicados } from './hooks/useDatosPublicados'
+import { useAutoRecargaExcels } from './hooks/useRecargarExcels'
+import { useJibble } from './hooks/useJibble'
 import Layout from './components/layout/Layout'
 import Login from './pages/Login'
 import Setup from './pages/Setup'
@@ -20,6 +22,10 @@ export default function App() {
   // Datos publicados desde el PC de Anuar (blob cifrado en el deploy) → merge local.
   // Se re-intenta al loguear (recién ahí existe el token que descifra).
   useDatosPublicados(authed)
+  // Al volver a la pestaña tras editar un Excel, releer las carpetas conectadas
+  // (modo no destructivo: borrar solo pasa con el botón "Recargar Excels").
+  const datos = useJibble(cfg.personOverrides, cfg.config.locales)
+  useAutoRecargaExcels({ cfg, people: datos.peopleAll, activo: authed && cfg.config.setupComplete })
   const [needsAuth, setNeedsAuth] = useState(null) // null = unknown, true/false una vez chequeado
 
   // Verificar si la app requiere auth (APP_PASSWORD configurada en Vercel)

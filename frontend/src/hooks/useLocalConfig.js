@@ -220,6 +220,29 @@ export function useLocalConfig() {
     })
   }, [])
 
+  // RECARGA FIEL de un local: deja sus turnos EXACTAMENTE como dicen los Excel
+  // de hoy. Purga de cada semana cubierta solo a las personas de ESE local (el
+  // storage mezcla todos los locales en la misma semana) y reescribe lo que
+  // traen los archivos — así desaparece lo que el gerente borró del cuaderno.
+  //   weekKeys: semanas que la carpeta cubre (fuera de ahí no se toca nada)
+  //   patchPorSemana: { [weekKey]: { [personId]: { [dow]: celda } } }
+  //   personIds: personas del local (∪ las que vengan en el patch)
+  const reemplazarTurnosDeLocal = useCallback((weekKeys, patchPorSemana, personIds) => {
+    setTurnos(prev => {
+      const out = { ...prev }
+      const ids = new Set((personIds || []).map(String))
+      for (const wk of (weekKeys || [])) {
+        const semana = { ...(out[wk] || {}) }
+        for (const pid of Object.keys(semana)) if (ids.has(pid)) delete semana[pid]
+        // Asignación (no spread): los días que el Excel ya no trae desaparecen.
+        for (const [pid, dias] of Object.entries(patchPorSemana?.[wk] || {})) semana[pid] = dias
+        if (Object.keys(semana).length) out[wk] = semana
+        else delete out[wk]
+      }
+      return out
+    })
+  }, [])
+
   // Copia toda la grilla de la semana anterior a la actual
   const copiarTurnosDesdeAnterior = useCallback((weekKeyDestino, weekKeyOrigen) => {
     setTurnos(prev => {
@@ -297,6 +320,7 @@ export function useLocalConfig() {
     setTurnoCelda,
     setNotaCelda,
     setTurnosSemana,
+    reemplazarTurnosDeLocal,
     copiarTurnosDesdeAnterior,
     condonar,
     revertirCondonacion,
