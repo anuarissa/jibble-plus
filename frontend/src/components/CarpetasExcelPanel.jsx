@@ -10,7 +10,12 @@ import { format } from 'date-fns'
 import { toast } from 'sonner'
 import { listarCarpetas, conectarCarpeta, desconectarCarpeta, soportaCarpetas } from '../utils/carpeta-horarios'
 import { bioKey, sincronizarLocalHorarios, sincronizarLocalBiometrico } from '../utils/sincronizar-carpetas'
+import { mesesConDatos } from '../utils/biometrico-store'
 import { useRecargarExcels } from '../hooks/useRecargarExcels'
+import { rutaSugerida } from '../config/carpetas-locales'
+
+const MESES_CORTO = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+const labelMes = m => `${MESES_CORTO[Number(m.split('-')[1]) - 1]} ${m.split('-')[0]}`
 
 const KEY_SYNC_HOR = 'jibble_carpetas_sync_v1'
 const KEY_SYNC_BIO = 'jibble_carpetas_bio_sync_v1'
@@ -34,6 +39,22 @@ export function CarpetasExcelPanel({ cfg, groups, people }) {
   const syncHor = readJSON(KEY_SYNC_HOR)
   const syncBio = readJSON(KEY_SYNC_BIO)
   const empleadosDe = groupId => (people || []).filter(p => p.groupId === groupId)
+
+  // ¿Ya hay datos de este local aunque la carpeta no esté conectada en ESTE
+  // navegador? (los cargó el script desde la PC de Anuar o llegaron publicados)
+  const datosDe = (groupId, tipo) => {
+    if (tipo === 'biometrico') {
+      const meses = mesesConDatos(groupId)
+      if (!meses.length) return null
+      return meses.length === 1
+        ? `${labelMes(meses[0].mesStr)} · ${meses[0].personas} personas`
+        : `${meses.length} meses cargados`
+    }
+    const ids = new Set(empleadosDe(groupId).map(p => String(p.id)))
+    if (!ids.size) return null
+    const semanas = Object.values(cfg.turnos || {}).filter(sem => Object.keys(sem || {}).some(pid => ids.has(String(pid)))).length
+    return semanas ? `${semanas} semana${semanas > 1 ? 's' : ''} de horarios` : null
+  }
 
   const accion = async (id, fn) => {
     setOcupado(id)
@@ -74,6 +95,8 @@ export function CarpetasExcelPanel({ cfg, groups, people }) {
                 const info = f.sync[g.id]
                 const id = `${g.id}:${f.tipo}`
                 const Icono = f.icono
+                const datos = conectada ? null : datosDe(g.id, f.tipo)
+                const ruta = rutaSugerida(g.id, f.tipo)
                 return (
                   <div key={f.tipo} className="flex items-center gap-2 flex-wrap text-sm">
                     <span className="flex items-center gap-1.5 text-ink-200 min-w-[230px]">
@@ -114,19 +137,28 @@ export function CarpetasExcelPanel({ cfg, groups, people }) {
                         </button>
                       </>
                     ) : (
-                      <button
-                        onClick={() => accion(id, async () => {
-                          await conectarCarpeta(g.id, f.tipo === 'biometrico' ? { pickerPrefix: 'bio-', storageKey: key } : {})
-                          const r = f.tipo === 'horarios'
-                            ? await sincronizarLocalHorarios(g.id, empleadosDe(g.id), { setTurnosSemana: cfg.setTurnosSemana, reemplazarTurnosDeLocal: cfg.reemplazarTurnosDeLocal }, { conGesto: true, turnosActuales: cfg.turnos })
-                            : await sincronizarLocalBiometrico(g.id, { conGesto: true })
-                          toast.success(`${nombre}: carpeta conectada${r?.archivosLeidos?.length ? ` · ${r.archivosLeidos.length} archivo(s)` : ''}`)
-                        })}
-                        disabled={ocupado === id}
-                        className="btn-ghost text-xs"
-                      >
-                        <FolderOpen size={12} /> Conectar carpeta
-                      </button>
+                      <>
+                        {datos && (
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-good/30 bg-good/5 px-2 py-1 text-xs text-ink-100" title="Ya cargado en este dispositivo (no hace falta conectar la carpeta para verlo)">
+                            <FolderCheck size={13} className="text-good" /> {datos}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => accion(id, async () => {
+                            await conectarCarpeta(g.id, f.tipo === 'biometrico' ? { pickerPrefix: 'bio-', storageKey: key } : {})
+                            const r = f.tipo === 'horarios'
+                              ? await sincronizarLocalHorarios(g.id, empleadosDe(g.id), { setTurnosSemana: cfg.setTurnosSemana, reemplazarTurnosDeLocal: cfg.reemplazarTurnosDeLocal }, { conGesto: true, turnosActuales: cfg.turnos })
+                              : await sincronizarLocalBiometrico(g.id, { conGesto: true })
+                            toast.success(`${nombre}: carpeta conectada${r?.archivosLeidos?.length ? ` · ${r.archivosLeidos.length} archivo(s)` : ''}`)
+                          })}
+                          disabled={ocupado === id}
+                          className={datos ? 'text-xs text-ink-300 hover:text-ink-50 underline underline-offset-2 transition-colors' : 'btn-ghost text-xs'}
+                          title={ruta ? `Elige esta carpeta: ${ruta}` : undefined}
+                        >
+                          {datos ? 'Conectar carpeta para recargar tú mismo' : <><FolderOpen size={12} /> Conectar carpeta</>}
+                        </button>
+                        {ruta && <span className="text-[10px] text-ink-400 font-mono truncate max-w-[320px]" title={ruta}>{ruta}</span>}
+                      </>
                     )}
                   </div>
                 )

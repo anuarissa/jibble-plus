@@ -5,6 +5,7 @@
 import { FolderOpen, FolderCheck, RefreshCw, X, Fingerprint, AlertTriangle } from 'lucide-react'
 import { format } from 'date-fns'
 import { borrarBioMes } from '../../utils/biometrico-store'
+import { rutaSugerida } from '../../config/carpetas-locales'
 
 const MESES_CORTO = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 const labelMes = mesStr => {
@@ -16,6 +17,7 @@ export function FuenteBiometricoPanel({
   carpeta, meses, noEncontrados, empleadosParaAlias, onAlias, sinDatosEnRango, rangoLabel, groupId,
 }) {
   const { soportado, estado, nombreCarpeta, lastSync, resultado } = carpeta
+  const rutaBio = rutaSugerida(groupId, 'biometrico')
 
   return (
     <div className="mb-6 space-y-3" data-testid="panel-biometrico">
@@ -29,8 +31,34 @@ export function FuenteBiometricoPanel({
           <span className="text-xs text-ink-400">Conectar carpetas requiere Chrome o Edge.</span>
         )}
 
-        {soportado && (estado === 'sin-carpeta' || estado === 'cargando') && (
-          <button onClick={carpeta.conectar} className="btn-secondary text-xs" data-testid="btn-conectar-bio">
+        {/* Sin carpeta conectada pero CON datos ya cargados: lo que importa es que
+            están cargados; conectar la carpeta es opcional (para recargarlos uno mismo). */}
+        {soportado && (estado === 'sin-carpeta' || estado === 'cargando') && meses.length > 0 && (
+          <>
+            <span className="inline-flex items-center gap-2 rounded-lg border border-good/30 bg-good/5 px-2.5 py-1.5 text-xs" data-testid="chip-datos-cargados"
+              title="Estos datos ya están en este dispositivo — no hace falta conectar la carpeta para verlos">
+              <FolderCheck size={14} className="text-good" />
+              <span className="text-ink-100">Datos cargados</span>
+            </span>
+            <button
+              onClick={carpeta.conectar}
+              className="text-xs text-ink-300 hover:text-ink-50 underline underline-offset-2 transition-colors"
+              data-testid="btn-conectar-bio"
+              title={rutaBio ? `Elige la carpeta: ${rutaBio}` : 'Conecta la carpeta del biométrico de este local'}
+            >
+              Conectar la carpeta para recargarlo tú mismo
+            </button>
+          </>
+        )}
+
+        {/* Sin datos y sin carpeta: acá sí hay que llamar la atención. */}
+        {soportado && (estado === 'sin-carpeta' || estado === 'cargando') && meses.length === 0 && (
+          <button
+            onClick={carpeta.conectar}
+            className="btn-secondary text-xs"
+            data-testid="btn-conectar-bio"
+            title={rutaBio ? `Elige la carpeta: ${rutaBio}` : undefined}
+          >
             <FolderOpen size={14} /> Conectar carpeta del biométrico
           </button>
         )}
@@ -96,9 +124,11 @@ export function FuenteBiometricoPanel({
           <AlertTriangle size={16} className="text-warn mt-0.5 shrink-0" />
           <div className="text-ink-200">
             <span className="font-semibold text-warn">Sin marcas del biométrico en {rangoLabel}.</span>{' '}
-            {estado === 'sin-carpeta'
-              ? 'Conecta la carpeta donde guardas los exports del aparato (botón de arriba).'
-              : 'Exporta el mes desde el aparato y suéltalo en la carpeta conectada (el archivo debe llevar "BIOMETRICO" en el nombre); después toca re-sincronizar.'}
+            {meses.length > 0
+              ? `Sí hay datos de ${meses.map(m => labelMes(m.mesStr)).join(', ')} — cambia el mes arriba, o carga el export que falta.`
+              : estado === 'sin-carpeta'
+                ? `Falta el export del aparato de este local${rutaBio ? ` (va en ${rutaBio})` : ''}.`
+                : 'Exporta el mes desde el aparato y suéltalo en la carpeta conectada (el archivo debe llevar "BIOMETRICO" en el nombre); después toca re-sincronizar.'}
           </div>
         </div>
       )}

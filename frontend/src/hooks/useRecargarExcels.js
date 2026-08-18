@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { soportaCarpetas } from '../utils/carpeta-horarios'
 import { recargarTodo } from '../utils/sincronizar-carpetas'
+import { localesConBio } from '../utils/biometrico-store'
 
 const MIN_ENTRE_AUTO_MS = 30_000
 
@@ -49,11 +50,19 @@ export function useRecargarExcels({ cfg, people, onIrAConfiguracion }) {
 
       if (!silencioso) {
         if (!r.carpetas) {
-          toast.message('Todavía no conectaste las carpetas en este navegador', {
-            description: 'Una sola vez por dispositivo: eliges la carpeta de cada local y desde ahí el botón ya lee tus Excel.',
-            duration: 10000,
-            ...(irAConfig ? { action: { label: 'Conectar ahora', onClick: irAConfig } } : {}),
-          })
+          // Si ya hay datos cargados (los subió el script o llegaron publicados),
+          // esto NO es un error: solo falta conectar para poder recargar acá.
+          const yaHayDatos = localesConBio().length > 0 || Object.keys(c.turnos || {}).length > 0
+          toast.message(
+            yaHayDatos ? 'Tus datos ya están cargados' : 'Todavía no conectaste las carpetas en este navegador',
+            {
+              description: yaHayDatos
+                ? 'Se cargaron desde la PC (no leyendo carpetas en este navegador). Para recargarlos tú mismo desde los Excel, conecta las carpetas una sola vez.'
+                : 'Una sola vez por dispositivo: eliges la carpeta de cada local y desde ahí el botón ya lee tus Excel.',
+              duration: 10000,
+              ...(irAConfig ? { action: { label: 'Conectar ahora', onClick: irAConfig } } : {}),
+            },
+          )
         } else {
           const detalle = resumenTexto(r)
           toast.success(`Excels recargados · ${r.carpetas} carpeta${r.carpetas > 1 ? 's' : ''}`, {
