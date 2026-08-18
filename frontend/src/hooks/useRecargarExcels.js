@@ -19,12 +19,12 @@ function resumenTexto(r) {
   return partes.join(' · ')
 }
 
-export function useRecargarExcels({ cfg, people }) {
+export function useRecargarExcels({ cfg, people, onIrAConfiguracion }) {
   const [cargando, setCargando] = useState(false)
   const ultimaRef = useRef(0)
   // Refs: la recarga se dispara desde callbacks/listeners y necesita datos frescos
-  const datosRef = useRef({ cfg, people })
-  datosRef.current = { cfg, people }
+  const datosRef = useRef({ cfg, people, onIrAConfiguracion })
+  datosRef.current = { cfg, people, onIrAConfiguracion }
 
   const recargar = useCallback(async ({ fiel = true, silencioso = false } = {}) => {
     if (!soportaCarpetas) {
@@ -33,7 +33,7 @@ export function useRecargarExcels({ cfg, people }) {
     }
     setCargando(true)
     try {
-      const { cfg: c, people: gente } = datosRef.current
+      const { cfg: c, people: gente, onIrAConfiguracion: irAConfig } = datosRef.current
       const peoplePorLocal = {}
       for (const p of (gente || [])) {
         if (!p.groupId) continue
@@ -49,7 +49,11 @@ export function useRecargarExcels({ cfg, people }) {
 
       if (!silencioso) {
         if (!r.carpetas) {
-          toast.message('No hay carpetas conectadas', { description: 'Conéctalas en Configuración → Carpetas de Excel, o desde la pestaña Turnos de cada local.' })
+          toast.message('Todavía no conectaste las carpetas en este navegador', {
+            description: 'Una sola vez por dispositivo: eliges la carpeta de cada local y desde ahí el botón ya lee tus Excel.',
+            duration: 10000,
+            ...(irAConfig ? { action: { label: 'Conectar ahora', onClick: irAConfig } } : {}),
+          })
         } else {
           const detalle = resumenTexto(r)
           toast.success(`Excels recargados · ${r.carpetas} carpeta${r.carpetas > 1 ? 's' : ''}`, {
@@ -63,7 +67,11 @@ export function useRecargarExcels({ cfg, people }) {
           toast.warning('No se borró nada en un local por seguridad', { description: `${a.motivoAborto}. Se actualizó lo demás; revisa que OneDrive haya descargado los archivos y vuelve a recargar.`, duration: 9000 })
         }
         if (r.requierenPermiso.length) {
-          toast.warning(`${r.requierenPermiso.length} carpeta(s) piden permiso otra vez`, { description: 'Ve a Configuración → Carpetas de Excel y dale permiso a cada una (el navegador lo pide de a una).', duration: 9000 })
+          toast.warning(`${r.requierenPermiso.length} carpeta(s) piden permiso otra vez`, {
+            description: 'El navegador lo pide de a una: dale permiso a cada carpeta en Configuración.',
+            duration: 10000,
+            ...(irAConfig ? { action: { label: 'Ir a Configuración', onClick: irAConfig } } : {}),
+          })
         }
         for (const e of r.errores) toast.error(`Error leyendo una carpeta: ${e.error}`)
       } else if (resumenTexto(r)) {

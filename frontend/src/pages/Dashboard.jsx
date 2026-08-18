@@ -7,16 +7,12 @@ import { AlertsPanel } from '../components/dashboard/AlertsPanel'
 import { WorkspaceSwitcher } from '../components/WorkspaceSwitcher'
 import { Skeleton } from '../components/ui/Skeleton'
 import { statsRestaurante, statsGlobales } from '../utils/stats'
-import { RefreshCw, FolderSync } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { format } from 'date-fns'
-import { useRecargarExcels } from '../hooks/useRecargarExcels'
 
 export default function Dashboard({ cfg }) {
   const ws = useActiveWorkspace()
   const data = useJibble(cfg.personOverrides, cfg.config.locales)
-  // Vuelve a leer los Excel de TODOS los locales (horarios + biométrico) y deja
-  // los datos igual a lo que dicen los archivos hoy (fiel: borra lo que ya no está).
-  const excels = useRecargarExcels({ cfg, people: data.peopleAll })
   const alerts = useAlerts({
     active: data.active,
     schedules: data.schedules,
@@ -61,18 +57,6 @@ export default function Dashboard({ cfg }) {
           <span className="text-xs text-ink-300">
             {data.health?.mode === 'live' ? '🟢 Datos reales' : '🟡 Modo demo'}
           </span>
-          {excels.soportado && (
-            <button
-              onClick={() => excels.recargar({ fiel: true })}
-              className="btn-ghost text-sm"
-              disabled={excels.cargando}
-              data-testid="btn-recargar-excels"
-              title="Vuelve a leer los Excel de todos los locales (horarios y biométrico) y deja los datos igual a los archivos de ahora"
-            >
-              <FolderSync size={14} className={excels.cargando ? 'animate-spin' : ''} />
-              Recargar Excels
-            </button>
-          )}
           <button onClick={data.refetch} className="btn-ghost text-sm" disabled={data.loading}>
             <RefreshCw size={14} className={data.loading ? 'animate-spin' : ''} />
             Actualizar

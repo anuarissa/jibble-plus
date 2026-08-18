@@ -1,10 +1,19 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, BarChart3, History, Settings as SettingsIcon, Activity, ChevronLeft, Users, Wallet } from 'lucide-react'
+import { LayoutDashboard, BarChart3, History, Settings as SettingsIcon, Activity, ChevronLeft, Users, Wallet, FolderSync } from 'lucide-react'
 import { useState } from 'react'
+import { useJibble } from '../../hooks/useJibble'
+import { useRecargarExcels } from '../../hooks/useRecargarExcels'
 
 export default function Layout({ cfg }) {
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
+  // Recarga de los Excel de TODOS los locales, disponible desde cualquier página.
+  const data = useJibble(cfg.personOverrides, cfg.config.locales)
+  const excels = useRecargarExcels({
+    cfg,
+    people: data.peopleAll,
+    onIrAConfiguracion: () => navigate('/configuracion'),
+  })
   const items = [
     { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
     { to: '/empleados', label: 'Empleados', icon: Users },
@@ -48,6 +57,20 @@ export default function Layout({ cfg }) {
             </NavLink>
           ))}
         </nav>
+        {excels.soportado && (
+          <div className="p-3 border-t border-white/5">
+            <button
+              onClick={() => excels.recargar({ fiel: true })}
+              disabled={excels.cargando}
+              data-testid="btn-recargar-excels"
+              title="Recargar Excels: vuelve a leer los horarios y biométricos de todos los locales y deja los datos igual a los archivos de ahora"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-ink-200 hover:text-ink-50 hover:bg-bg-700/60 disabled:opacity-50 ${collapsed ? 'justify-center' : ''}`}
+            >
+              <FolderSync size={18} className={`shrink-0 ${excels.cargando ? 'animate-spin' : ''}`} />
+              {!collapsed && <span>Recargar Excels</span>}
+            </button>
+          </div>
+        )}
         <button
           onClick={() => setCollapsed(c => !c)}
           className="m-3 p-2 rounded-lg hover:bg-bg-700 text-ink-300 transition flex items-center justify-center"
