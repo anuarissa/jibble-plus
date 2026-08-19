@@ -1,6 +1,8 @@
 // Tests de SBARRO AMÉRICA contra los archivos REALES del disco:
-//   1) lector de planillas de horarios (24:00, celdas combinadas, bloque sin ENTRADA)
-//   2) resolución de nombres del biométrico (Carolina sola, alias CREAR, IGNORAR)
+//   1) lector de planillas de horarios (24:00, celdas combinadas, bloque sin ENTRADA,
+//      alias fijo FABIOLA→Rojas, ambiguos visibles, aviso de dos puestos, merges)
+//   2) resolución de nombres del biométrico (Carolina sola, alias CREAR, IGNORAR,
+//      dos Fabiolas separables por idBio, aviso de choque de fechas)
 // No ejecutar directo: node scripts/test-america.mjs
 
 import fs from 'node:fs'
@@ -10,21 +12,23 @@ import { parseWorkbookTurnos } from '../frontend/src/utils/excel-turnos'
 import { normalizarCelda, turnoToText } from '../frontend/src/utils/turnos'
 import {
   parseBiometricoWorkbook, resolverPersonasBio, sinteticosPorAlias,
-  personaSinteticaId, marcasToAttendance, ALIAS_CREAR,
+  personaSinteticaId, marcasToAttendance, ALIAS_CREAR, aliasKeyBio,
 } from '../frontend/src/utils/biometrico'
-import { GROUP_IDS } from '../frontend/src/config/employees'
+import { GROUP_IDS, ALIAS_TURNOS_FIJOS, EMPLOYEE_OVERRIDES } from '../frontend/src/config/employees'
 
 const CARPETA_HORARIOS = 'C:/Users/anuar/OneDrive/SBARRO AMERICA/CUADERNOS DE GERENTES SA/PLANILLA SUPERVISORES SA/2026/HORARIOS 2026'
 const CARPETA_BIO = 'C:/Users/anuar/OneDrive/Anuar/SBARRO Cochabamba/FORMATOS CBBA/PAGOS SUELDOS DESDE 2017/PAGOS SUELDOS 2026'
 const G = GROUP_IDS.SBARRO_AMERICA
 
-// Gente real de América en Jibble (cuenta A). Los ids de este test son etiquetas:
-// lo que se prueba es el matcher de nombres, no los uuid.
+// Gente real de América en Jibble (cuenta A). Fabiola Rojas lleva su uuid REAL
+// porque el alias fijo compartido (ALIAS_TURNOS_FIJOS) apunta a ese id; el resto
+// son etiquetas — lo que se prueba es el matcher de nombres.
+const ROJAS = '93a65596-276e-4b8b-93bd-56d0017621ca'
 const EMP = [
   { id: 'axel', fullName: 'Axel Acosta' },
   { id: 'alex', fullName: 'Alex Villegas' },
   { id: 'anthony', fullName: 'Anthony Inturias' },
-  { id: 'fabiolaR', fullName: 'Fabiola Rojas' },
+  { id: ROJAS, fullName: 'Fabiola Rojas' },
   { id: 'carolina', fullName: 'Carolina Villalobos Apaza' },
   { id: 'gabriel', fullName: 'Gabriel Carvajal' },
   { id: 'daniela', fullName: 'Daniela Delgadillo' },
@@ -33,7 +37,8 @@ const EMP = [
   { id: 'cae', fullName: 'Cae Aranibar Delgadillo' },
   { id: 'fabiolaN', fullName: 'Fabiola Nava' },
 ]
-const ALIASES_TURNOS = { anuar: 'IGNORAR', fabiola: 'fabiolaR' }
+// Los mismos alias fijos que usan la web y el CLI (fuente única).
+const ALIASES_TURNOS = ALIAS_TURNOS_FIJOS[G]
 
 const normNombre = s => String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
 
@@ -92,6 +97,76 @@ export async function correr() {
     check('MATIAS se reporta como no encontrado', [...total.noEncontrados].some(n => /MATIAS/i.test(n)),
       [...total.noEncontrados].join(','))
     check('ninguna celda ignorada', total.celdasIgnoradas === 0, `${total.celdasIgnoradas} ignoradas`)
+
+    // ── FABIOLA (el bug que reportó Anuar): con el alias fijo compartido, su
+    // horario del cuaderno se aplica a Fabiola Rojas en TODAS las semanas y
+    // entra a las 08:00 — no el default viejo de la tarde. ──
+    const semanasFabiola = semanas.filter(wk => total.aplicarPorSemana[wk]?.[ROJAS])
+    check(`Fabiola Rojas tiene horario en las 8 semanas (${semanasFabiola.length})`, semanasFabiola.length === 8)
+    const diasF = [1, 2, 3, 4, 5, 6, 7].map(d => dia('2026-W33', ROJAS, d))
+    console.log('  · Fabiola W33:', diasF.map((t, i) => `${['L', 'M', 'X', 'J', 'V', 'S', 'D'][i]}=${t || '—'}`).join(' '))
+    check('Fabiola lunes W33 = 08:00-23:00 (turno largo del cuaderno)', diasF[0] === '08:00-23:00', diasF[0])
+    check('Fabiola miércoles W33 = OFF (igual que el cuaderno)', diasF[2] === 'OFF', diasF[2])
+    check('Fabiola entra 08:00 todos los días laborales (NO 16:00)',
+      diasF.every((t, i) => i === 2 || /^08:00/.test(t)), diasF.join(' | '))
+    check('Fabiola Nava NO recibe ningún horario', !semanas.some(wk => total.aplicarPorSemana[wk]?.fabiolaN))
+    check('el defaultWeek viejo de tarde de Fabiola Rojas ya no existe',
+      !EMPLOYEE_OVERRIDES[ROJAS]?.defaultWeek)
+
+    // ── Ambiguos: SIN alias, FABIOLA matchea a las dos y debe llegar al panel
+    // (antes se descartaba sin dejar rastro resoluble). ──
+    const sinAlias = { aplicar: {}, ambiguos: [], noEncontrados: [] }
+    for (const f of archivos) {
+      const r = parseWorkbookTurnos(XLSX.readFile(path.join(CARPETA_HORARIOS, f)), EMP, { aliases: {} })
+      for (const a of r.ambiguos) if (!sinAlias.ambiguos.some(x => x.nombre === a.nombre)) sinAlias.ambiguos.push(a)
+      for (const n of r.noEncontrados) if (!sinAlias.noEncontrados.includes(n)) sinAlias.noEncontrados.push(n)
+      for (const wk of Object.keys(r.aplicarPorSemana)) sinAlias.aplicar[wk] = { ...sinAlias.aplicar[wk], ...r.aplicarPorSemana[wk] }
+    }
+    const ambFab = sinAlias.ambiguos.find(a => /FABIOLA/i.test(a.nombre))
+    check('sin alias: FABIOLA llega como AMBIGUA con sus 2 candidatas', !!ambFab && ambFab.candidatos.length === 2,
+      JSON.stringify(sinAlias.ambiguos))
+    check('sin alias: las candidatas son Rojas y Nava',
+      !!ambFab && ambFab.candidatos.map(c => c.fullName).sort().join(' | ') === 'Fabiola Nava | Fabiola Rojas')
+    check('sin alias: FABIOLA no se duplica en "no encontrados"', !sinAlias.noEncontrados.some(n => /^FABIOLA$/i.test(n)))
+    check('sin alias: el horario NO se aplica a ninguna Fabiola (ambigua)',
+      !Object.values(sinAlias.aplicar).some(sem => sem[ROJAS] || sem.fabiolaN))
+
+    // ── JHON en dos puestos (COCINA y MESERO, W27/W28): se fusiona como turno
+    // doble pero ahora AVISA — puede ser otra persona con el mismo nombre. ──
+    const avisoJhon = total.warnings.find(w => /JHON/i.test(w) && /dos puestos/.test(w))
+    check('avisa que JHON aparece en dos puestos (W27/W28)', !!avisoJhon, total.warnings.filter(w => /puestos/.test(w)).join(' | '))
+  }
+
+  // ── Unit sintético: nombres por ANCLA del merge — texto oculto bajo la celda
+  // combinada (caso "Daniela Wolf") no se le regala a nadie si el ancla se vacía. ──
+  {
+    const serial = d => Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000)
+    const lun = serial(new Date(2026, 7, 17)) // lunes 17-ago-2026 (W34)
+    const filas = [
+      ['', '', '', '', 'L', 'M', 'Mi', 'J', 'V', 'S', 'D'],
+      ['NOMBRE Y APELLIDO', '', '', '', lun, lun + 1, lun + 2, lun + 3, lun + 4, lun + 5, lun + 6],
+      // Bloque 1: ancla VACÍA (nombre borrado) + texto fantasma en la fila SALIDA.
+      ['GERENTE', '', 'AM', 'ENTRADA', '08:00', '08:00', '08:00', '08:00', '08:00', '08:00', '08:00'],
+      ['', 'Daniela Fantasma', '', 'SALIDA', '16:00', '16:00', '16:00', '16:00', '16:00', '16:00', '16:00'],
+      ['', '', '', 'HORAS', '', '', '', '', '', '', ''],
+      // Bloque 2: normal, con nombre en el ancla.
+      ['COCINA', 'PEDRO', 'AM', 'ENTRADA', '09:00', '09:00', '09:00', '09:00', '09:00', '09:00', '09:00'],
+      ['', '', '', 'SALIDA', '17:00', '17:00', '17:00', '17:00', '17:00', '17:00', '17:00'],
+      ['', '', '', 'HORAS', '', '', '', '', '', '', ''],
+    ]
+    const ws = XLSX.utils.aoa_to_sheet(filas)
+    ws['!merges'] = [
+      { s: { r: 2, c: 1 }, e: { r: 4, c: 1 } },  // nombre del bloque 1 (ancla vacía, fantasma dentro)
+      { s: { r: 5, c: 1 }, e: { r: 7, c: 1 } },  // nombre del bloque 2 (PEDRO)
+    ]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Horarios')
+    const empSint = [{ id: 'd1', fullName: 'Daniela Fantasma' }, { id: 'p1', fullName: 'Pedro Perez' }]
+    const r = parseWorkbookTurnos(wb, empSint, {})
+    const sem = r.aplicarPorSemana['2026-W34'] || {}
+    check('merge con ancla vacía: el texto oculto NO se convierte en horario de nadie', !sem.d1, JSON.stringify(sem.d1 || null))
+    check('merge normal: PEDRO sí recibe su horario', !!sem.p1 && turnoToText(normalizarCelda(sem.p1['1'])) === '09:00-17:00',
+      JSON.stringify(sem.p1?.['1'] || null))
   }
 
   // ── Biométrico: nombres del aparato → empleados ────────────────────────────
@@ -153,6 +228,48 @@ export async function correr() {
   check('IGNORAR no crea empleados', sinteticosPorAlias(G, bio.personasBio, alIg).length === 0)
   check('IGNORAR deja fuera de la planilla las marcas de esa persona',
     !marcasToAttendance(bio.marcas, { groupId: G, mapa: resIg.mapa }).some(a => a.personId === 'IGNORAR' || a.personId === idL))
+
+  // ── Las DOS Fabiolas del aparato («FABIOLA» id 31 y «fabiola» id 13): por
+  // nombre colapsaban a la misma clave; con alias por idBio van a personas
+  // DISTINTAS y las horas de cada una a quien corresponde. ──
+  const fabiolas = bio.personasBio.filter(p => /fabiola/i.test(p.nombre))
+  check('el aparato tiene DOS Fabiolas', fabiolas.length === 2, fabiolas.map(p => `${p.nombre}(${p.idBio})`).join(', '))
+  const [fabA, fabB] = fabiolas.sort((a, b) => Number(b.idBio) - Number(a.idBio)) // 31 (Rojas) y 13 (Nava)
+  const ROJAS_J = { id: '93a65596-276e-4b8b-93bd-56d0017621ca', fullName: 'Fabiola Rojas', groupId: G }
+  const NAVA_J = { id: 'nava-uuid', fullName: 'Fabiola Nava', groupId: G }
+  const empDos = [CAROLINA_JIBBLE, ROJAS_J, NAVA_J]
+
+  // Sin alias: ambas quedan pendientes (matcher ambiguo) y con su idBio para la UI.
+  const resDos = resolverPersonasBio({ groupId: G, personasBio: bio.personasBio, empleadosJibble: empDos, aliases: {} })
+  check('sin alias: las dos Fabiolas quedan pendientes (matcher ambiguo)',
+    resDos.pendientes.filter(p => /fabiola/i.test(p.nombre)).length === 2, JSON.stringify(resDos.pendientes))
+  check('pendientes trae idBio + nombre (para asignar por id)',
+    resDos.pendientes.every(p => p.idBio != null && p.nombre))
+
+  // Con alias por idBio: cada una a su empleada.
+  const alDos = { [aliasKeyBio(fabA.idBio)]: ROJAS_J.id, [aliasKeyBio(fabB.idBio)]: NAVA_J.id }
+  const resSep = resolverPersonasBio({ groupId: G, personasBio: bio.personasBio, empleadosJibble: empDos, aliases: alDos, marcas: bio.marcas })
+  check('alias por idBio separa: id 31 → Rojas, id 13 → Nava',
+    resSep.mapa[fabA.idBio] === ROJAS_J.id && resSep.mapa[fabB.idBio] === NAVA_J.id)
+  check('bien separadas: sin avisos de choque', resSep.avisos.length === 0, resSep.avisos.join(' | '))
+  const attSep = marcasToAttendance(bio.marcas, { groupId: G, mapa: resSep.mapa })
+  const hSep = id => attSep.filter(a => a.personId === id).reduce((s, a) => s + (a.durationMinutes || 0), 0) / 60
+  // 257,5 h verificadas día por día (26 días, 3 con salida pasada la medianoche).
+  check(`Rojas recibe SOLO sus horas (~257,5 h → ${hSep(ROJAS_J.id).toFixed(1)})`, hSep(ROJAS_J.id) > 250 && hSep(ROJAS_J.id) < 265)
+  check(`Nava recibe SOLO sus horas (~13,9 h → ${hSep(NAVA_J.id).toFixed(1)})`, hSep(NAVA_J.id) > 10 && hSep(NAVA_J.id) < 18)
+
+  // Las dos al MISMO empleado por error: ambas marcaron el 30 y 31 de julio →
+  // sus fichajes chocarían; el resolver debe avisar.
+  const alMal = { [aliasKeyBio(fabA.idBio)]: ROJAS_J.id, [aliasKeyBio(fabB.idBio)]: ROJAS_J.id }
+  const resMal = resolverPersonasBio({ groupId: G, personasBio: bio.personasBio, empleadosJibble: empDos, aliases: alMal, marcas: bio.marcas })
+  check('dos ids del aparato al mismo empleado con marcas el mismo día → AVISA',
+    resMal.avisos.length === 1 && /mismo día/i.test(resMal.avisos[0]), resMal.avisos.join(' | '))
+  check('el aviso nombra los días que chocan (30 y 31 de julio)',
+    /2026-07-30/.test(resMal.avisos[0] || '') && /2026-07-31/.test(resMal.avisos[0] || ''), resMal.avisos[0])
+
+  // Compatibilidad: un alias por NOMBRE sigue funcionando cuando no hay duplicado.
+  const resNom = resolverPersonasBio({ groupId: G, personasBio: bio.personasBio, empleadosJibble: empDos, aliases: { [normNombre(luciana.nombre)]: 'IGNORAR' } })
+  check('alias por nombre (sin duplicado) sigue valiendo', resNom.mapa[luciana.idBio] === 'IGNORAR')
 
   return fallos
 }

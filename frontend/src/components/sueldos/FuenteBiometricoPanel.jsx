@@ -14,9 +14,13 @@ const labelMes = mesStr => {
 }
 
 export function FuenteBiometricoPanel({
-  carpeta, meses, noEncontrados, deEsteLocal = [], sinLocal = [], deOtroLocal = [],
+  carpeta, meses, noEncontrados, pendientes = null, avisos = [],
+  deEsteLocal = [], sinLocal = [], deOtroLocal = [],
   onAlias, sinDatosEnRango, rangoLabel, groupId,
 }) {
+  // pendientes trae idBio + días con marcas (permite separar dos nombres iguales
+  // del aparato); si el caller aún pasa solo nombres, se degrada con gracia.
+  const filasPendientes = pendientes ?? (noEncontrados || []).map(n => ({ idBio: null, nombre: n, dias: null }))
   const { soportado, estado, nombreCarpeta, lastSync, resultado } = carpeta
   const rutaBio = rutaSugerida(groupId, 'biometrico')
 
@@ -134,11 +138,23 @@ export function FuenteBiometricoPanel({
         </div>
       )}
 
+      {/* Dos ids del aparato apuntando al mismo empleado con marcas el mismo día */}
+      {avisos.length > 0 && (
+        <div className="rounded-xl border border-warn/40 bg-warn/5 p-3.5 space-y-1.5 text-sm" data-testid="avisos-bio">
+          {avisos.map((a, i) => (
+            <div key={i} className="flex items-start gap-2 text-ink-200">
+              <AlertTriangle size={15} className="text-warn mt-0.5 shrink-0" />
+              <span>{a}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Nombres del aparato sin empleado asignado */}
-      {noEncontrados.length > 0 && (
+      {filasPendientes.length > 0 && (
         <div className="surface p-4 grain" data-testid="panel-nombres-bio">
           <p className="text-sm font-medium text-ink-100 mb-1">
-            Nombres del biométrico sin empleado asignado ({noEncontrados.length})
+            Nombres del biométrico sin empleado asignado ({filasPendientes.length})
           </p>
           <p className="text-xs text-ink-400 mb-3">
             Asigna cada nombre del aparato a su empleado. Si trabaja aquí pero no está en Jibble, usa
@@ -146,12 +162,15 @@ export function FuenteBiometricoPanel({
             Se guarda una sola vez y vale también para los horarios.
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
-            {noEncontrados.map(nombre => (
-              <div key={nombre} className="flex items-center gap-2">
-                <span className="text-sm text-ink-100 font-mono min-w-[110px] truncate" title={nombre}>{nombre}</span>
+            {filasPendientes.map(({ idBio, nombre, dias }) => (
+              <div key={idBio ?? nombre} className="flex items-center gap-2">
+                <span className="text-sm text-ink-100 font-mono min-w-[110px] truncate" title={idBio != null ? `${nombre} · id ${idBio} en el aparato` : nombre}>
+                  {nombre}
+                  {dias != null && <span className="text-ink-400 text-[11px]"> · {dias} día{dias === 1 ? '' : 's'}</span>}
+                </span>
                 <select
                   defaultValue=""
-                  onChange={e => e.target.value && onAlias(nombre, e.target.value)}
+                  onChange={e => e.target.value && onAlias(nombre, e.target.value, idBio)}
                   className="input text-xs flex-1"
                 >
                   <option value="" disabled>Asignar a…</option>

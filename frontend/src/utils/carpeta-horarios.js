@@ -15,6 +15,7 @@ import { addDays } from 'date-fns'
 import { parseWorkbookTurnos, normalizarNombre } from './excel-turnos'
 import { esWorkbookTuesday, parseWorkbookTurnosTuesday } from './excel-turnos-tuesday'
 import { isoWeekKey } from './turnos'
+import { ALIAS_TURNOS_FIJOS } from '../config/employees'
 
 // Ventana de "recencia": semana actual + N anteriores. Nombres no encontrados y
 // warnings de celdas de semanas más viejas se silencian (alta rotación de personal
@@ -103,6 +104,14 @@ export function getAliases(groupId) {
   return out
 }
 
+// Alias para el matching de HORARIOS: fijos en código (web+CLI comparten la
+// misma tabla — así "FABIOLA" del cuaderno de América es Rojas en ambos lados)
+// + los del usuario, que ganan. El biométrico NO usa esta función: allí puede
+// haber dos personas del aparato con el mismo nombre y se resuelven por idBio.
+export function getAliasesTurnos(groupId) {
+  return { ...(ALIAS_TURNOS_FIJOS[groupId] || {}), ...getAliases(groupId) }
+}
+
 export function setAlias(groupId, nombreExcel, personIdOIgnorar) {
   const all = readAliasStore()
   all[groupId + ':' + normalizarNombre(nombreExcel)] = personIdOIgnorar
@@ -145,7 +154,7 @@ export async function leerCarpeta(handle, empleados, opts = {}) {
   archivos.sort((a, b) => a.lastModified - b.lastModified)
 
   const total = {
-    aplicarPorSemana: {}, warnings: [], noEncontrados: [],
+    aplicarPorSemana: {}, warnings: [], noEncontrados: [], ambiguos: [],
     archivosLeidos: [], celdasOk: 0, celdasIgnoradas: 0,
     archivosOmitidos: omitidos,
   }
@@ -179,6 +188,9 @@ export async function leerCarpeta(handle, empleados, opts = {}) {
       }
       for (const n of r.noEncontrados) {
         if (!total.noEncontrados.includes(n)) total.noEncontrados.push(n)
+      }
+      for (const a of (r.ambiguos || [])) {
+        if (!total.ambiguos.some(x => x.nombre === a.nombre)) total.ambiguos.push(a)
       }
       total.celdasOk += r.celdasOk
       total.celdasIgnoradas += r.celdasIgnoradas

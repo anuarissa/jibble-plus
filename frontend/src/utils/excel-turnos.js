@@ -267,9 +267,15 @@ export function parseWorkbookTurnos(wb, empleados, opts = {}) {
     if (!ws) continue
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
     if (!rows.length) continue
+    // Los índices de `rows` están corridos si el rango de la hoja no empieza en
+    // A1 (pasa en los cuadernos reales) — el offset permite mapear los merges
+    // (coordenadas absolutas de la hoja) a índices de `rows`.
+    const rango = ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { s: { r: 0, c: 0 } }
     hojas.push({
       name,
       rows,
+      merges: ws['!merges'] || null,
+      offsetHoja: { r: rango.s.r, c: rango.s.c },
       esAnuar: detectarFormatoAnuar(rows),
       esHorario: normalizar(name).includes('horario'),
     })
@@ -284,10 +290,10 @@ export function parseWorkbookTurnos(wb, empleados, opts = {}) {
   if (candidatas.length) {
     const total = {
       aplicarPorSemana: {}, warnings: [], celdasOk: 0, celdasIgnoradas: 0,
-      formato: 'anuar', semanasDetectadas: [], noEncontrados: [],
+      formato: 'anuar', semanasDetectadas: [], noEncontrados: [], ambiguos: [],
     }
     for (const h of candidatas) {
-      const r = parseFormatoAnuar(h.rows, empleados, opts)
+      const r = parseFormatoAnuar(h.rows, empleados, { ...opts, merges: h.merges, offsetHoja: h.offsetHoja })
       for (const [wk, porPersona] of Object.entries(r.aplicarPorSemana)) {
         if (!total.aplicarPorSemana[wk]) total.aplicarPorSemana[wk] = {}
         for (const [pid, dias] of Object.entries(porPersona)) {
@@ -299,6 +305,7 @@ export function parseWorkbookTurnos(wb, empleados, opts = {}) {
       total.celdasIgnoradas += r.celdasIgnoradas
       for (const wk of r.semanasDetectadas) if (!total.semanasDetectadas.includes(wk)) total.semanasDetectadas.push(wk)
       for (const n of r.noEncontrados) if (!total.noEncontrados.includes(n)) total.noEncontrados.push(n)
+      for (const a of r.ambiguos) if (!total.ambiguos.some(x => x.nombre === a.nombre)) total.ambiguos.push(a)
     }
     return total
   }
@@ -314,6 +321,7 @@ export function parseWorkbookTurnos(wb, empleados, opts = {}) {
     formato: 'simple',
     semanasDetectadas: [weekKey],
     noEncontrados: result.noEncontrados,
+    ambiguos: [],
   }
 }
 
@@ -334,9 +342,28 @@ function parseFormatoAnuar(rows, empleados, opts = {}) {
   const warnings = []
   const noEncontrados = new Set()
   const ambiguos = new Map() // nombreRaw → [empleados que matchean]
+  const ambiguosRecientes = new Set() // solo estos generan warning (los viejos solo van al panel)
   let celdasOk = 0
   let celdasIgnoradas = 0
   const semanasDetectadas = new Set()
+
+  // Lectura consciente de celdas combinadas: si la celda cae dentro de un merge,
+  // vale lo que dice la celda ANCLA — no el texto oculto que pueda haber debajo
+  // (caso real: "Daniela Wolf" enterrado en las filas SALIDA/HORAS del bloque del
+  // gerente; sin esto, borrar el nombre del ancla se lo regalaría a otra persona).
+  const merges = opts.merges || null
+  const off = opts.offsetHoja || { r: 0, c: 0 }
+  const celdaConMerge = (fila, col) => {
+    if (merges) {
+      const r = fila + off.r
+      const c = col + off.c
+      const m = merges.find(mm => mm.s.c <= c && c <= mm.e.c && mm.s.r <= r && r <= mm.e.r)
+      if (m) return String(rows[m.s.r - off.r]?.[m.s.c - off.c] ?? '').trim()
+    }
+    return String(rows[fila]?.[col] ?? '').trim()
+  }
+  const nombreEnFila = fila => celdaConMerge(fila, 1)
+  const areaEnFila = fila => celdaConMerge(fila, 0)
 
   // Buscar bloques: cada uno empieza con una fila que tenga "NOMBRE Y APELLIDO" en col A
   for (let i = 0; i < rows.length; i++) {
@@ -386,6 +413,12 @@ function parseFormatoAnuar(rows, empleados, opts = {}) {
     // Nombre del último bloque leído: lo hereda el bloque PM cuando la celda del
     // nombre está combinada (merge vertical) y solo trae texto en la fila de arriba.
     let ultimoNombreBloque = ''
+    // Área (col A: CAJEROS/PIZZERIA/COCINA…) del bloque, heredada igual que el
+    // nombre. Sirve para avisar si el MISMO empleado aparece en DOS puestos
+    // distintos la misma semana (ej. JHON en COCINA y en MESERO): puede ser un
+    // doble turno real o dos personas distintas con el mismo nombre.
+    let ultimaArea = ''
+    const areaPorEmpleado = new Map() // emp.id → área del primer bloque de esta semana
     while (j < rows.length && safety++ < 200) {
       const r = rows[j]
       if (!r) { j++; continue }
@@ -404,26 +437,46 @@ function parseFormatoAnuar(rows, empleados, opts = {}) {
         }
         // El nombre puede estar en la fila ENTRADA o en la fila SALIDA (algunos
         // archivos lo "centran verticalmente" escribiéndolo en la fila de abajo).
-        let nombreRaw = String(r[1] || '').trim()
-        if (!nombreRaw) nombreRaw = String(filaSalida[1] || '').trim()
-        // CELDA COMBINADA: cuando una persona tiene bloque AM y PM, el nombre
-        // suele estar solo en la primera fila del merge (ej. B40:B45). Sin esto
-        // el bloque PM se descartaba entero y se perdían esos turnos.
+        // Ambas lecturas respetan el ancla del merge si la celda está combinada.
+        let nombreRaw = nombreEnFila(j)
+        if (!nombreRaw) nombreRaw = nombreEnFila(j + 1)
+        // CELDA COMBINADA sin info de merges (fallback): cuando una persona tiene
+        // bloque AM y PM, el nombre suele estar solo en la primera fila del merge
+        // (ej. B40:B45). Sin esto el bloque PM se descartaba entero.
         if (!nombreRaw) nombreRaw = ultimoNombreBloque
         if (!nombreRaw) { j += 3; continue }
         ultimoNombreBloque = nombreRaw
+        const areaBloque = areaEnFila(j) || ultimaArea
+        if (areaBloque) ultimaArea = areaBloque
 
         // Alias resueltos a mano tienen prioridad sobre el matching automático.
         const alias = aliases[normalizar(nombreRaw)]
         if (alias === 'IGNORAR') { j += 3; continue }
         let emp = alias ? empleados.find(e => e.id === alias) : null
-        if (!emp) emp = matchEmpleado(empByNombre, nombreRaw, esReciente ? ambiguos : null)
+        // Ambiguos: se registran SIEMPRE (también en semanas viejas — antes se
+        // perdían en silencio) para que la UI ofrezca elegir al correcto; el
+        // warning de texto sí se limita a semanas recientes.
+        if (!emp) emp = matchEmpleado(empByNombre, nombreRaw, ambiguos)
         if (!emp) {
-          if (esReciente && !ambiguos.has(nombreRaw)) noEncontrados.add(nombreRaw)
+          if (ambiguos.has(nombreRaw)) {
+            if (esReciente) ambiguosRecientes.add(nombreRaw)
+          } else if (esReciente) {
+            noEncontrados.add(nombreRaw)
+          }
           j += 3
           continue
         }
         if (!aplicarPorSemana[weekKey][emp.id]) aplicarPorSemana[weekKey][emp.id] = {}
+
+        // Mismo empleado en dos puestos distintos la misma semana → avisar (los
+        // tramos se fusionan igual: puede ser un doble turno legítimo).
+        const areaPrev = areaPorEmpleado.get(emp.id)
+        if (areaPrev === undefined) {
+          areaPorEmpleado.set(emp.id, areaBloque)
+        } else if (esReciente && areaBloque && areaPrev && areaBloque !== areaPrev) {
+          const aviso = `"${nombreRaw}" (${weekKey}) aparece en dos puestos del cuaderno: ${areaPrev} y ${areaBloque}. Se sumaron como turno doble de la misma persona — si son dos personas distintas, diferencia los nombres en el cuaderno.`
+          if (!warnings.includes(aviso)) warnings.push(aviso)
+        }
 
         // Parsear los 7 días
         for (let c = 0; c < 7; c++) {
@@ -473,16 +526,23 @@ function parseFormatoAnuar(rows, empleados, opts = {}) {
   if (noEncontrados.size > 0) {
     warnings.push(`Empleados no encontrados en la app: ${[...noEncontrados].join(', ')}`)
   }
-  if (ambiguos.size > 0) {
-    for (const [raw, matches] of ambiguos) {
-      warnings.push(`"${raw}" en el Excel es ambiguo — matchea con ${matches.map(m => m.fullName).join(' y ')}. Escribí el nombre completo en el Excel para diferenciarlos.`)
-    }
+  for (const raw of ambiguosRecientes) {
+    const matches = ambiguos.get(raw) || []
+    warnings.push(`"${raw}" en el Excel es ambiguo — matchea con ${matches.map(m => m.fullName).join(' y ')}. Elegí al correcto en el panel de nombres (o escribe el nombre completo en el cuaderno).`)
   }
   if (semanasDetectadas.size > 1) {
     warnings.push(`Detectadas ${semanasDetectadas.size} semanas distintas en el archivo: ${[...semanasDetectadas].join(', ')}`)
   }
 
-  return { aplicarPorSemana, warnings, celdasOk, celdasIgnoradas, formato: 'anuar', semanasDetectadas: [...semanasDetectadas], noEncontrados: [...noEncontrados] }
+  return {
+    aplicarPorSemana, warnings, celdasOk, celdasIgnoradas, formato: 'anuar',
+    semanasDetectadas: [...semanasDetectadas], noEncontrados: [...noEncontrados],
+    // Nombres que matchean a VARIOS empleados: la UI ofrece elegir al correcto.
+    ambiguos: [...ambiguos].map(([nombre, candidatos]) => ({
+      nombre,
+      candidatos: candidatos.map(c => ({ id: c.id, fullName: c.fullName })),
+    })),
+  }
 }
 
 // Fusiona dos turnos del mismo día (empleado repetido en la planilla = turno partido).

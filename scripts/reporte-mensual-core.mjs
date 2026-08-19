@@ -29,6 +29,7 @@ import { parseBiometricoWorkbook, personasSinteticas, resolverPersonasBio, marca
 import { asumirSemanasFaltantes } from '../frontend/src/utils/turnos'
 import {
   GROUP_IDS, resolveGroupId, esPersonaDummy, getTarifaForPerson, getScheduleForPerson, EMPLOYEE_OVERRIDES,
+  ALIAS_TURNOS_FIJOS,
 } from '../frontend/src/config/employees'
 import * as XLSX from 'xlsx-js-style'
 
@@ -71,20 +72,9 @@ const LOCALES = [
 // Jibble se asume de América, salvo estos nombres (Oficinas, no entran al reporte).
 const OFICINAS_NOMBRES = new Set(['leisy oficina', 'erika bascope', 'vladimir hooper', 'oficinas tuesday'])
 
-// Alias de nombres del Excel → resolución fija para el CLI (editable).
-// 'IGNORAR' = ese nombre del Excel no se reporta (gerente, dueño, personal rotado).
-const ALIASES = {
-  [GROUP_IDS.SBARRO_HUPER]: {
-    daniela: 'IGNORAR',                                      // gerente (filas 00:00)
-    giussep: '0fd05836-c25d-4fc9-ad3d-97bb14524a06',         // Giuseppe Argento (typo de 3 letras, fuera del alcance del matcher)
-    andy: 'IGNORAR',                                         // apoyo EXTRA, no registrado en Jibble
-    nuevo: 'IGNORAR',                                        // fila placeholder del gerente
-  },
-  [GROUP_IDS.SBARRO_AMERICA]: {
-    anuar: 'IGNORAR',
-    fabiola: '93a65596-276e-4b8b-93bd-56d0017621ca', // Fabiola Rojas (Nava ya no trabaja pero sigue en Jibble → ambigüedad)
-  },
-}
+// Alias de nombres del Excel → resolución fija, COMPARTIDOS con la web
+// (frontend/src/config/employees.js). 'IGNORAR' = ese nombre no se reporta.
+const ALIASES = ALIAS_TURNOS_FIJOS
 // ===========================================================================
 
 function leerCredenciales() {

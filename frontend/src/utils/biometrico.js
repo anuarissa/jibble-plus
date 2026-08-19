@@ -189,21 +189,29 @@ export function personasSinteticas(groupId, personasBio) {
 // que ya se publica a los demás dispositivos.
 export const ALIAS_CREAR = 'CREAR'
 
-export function resolverPersonasBio({ groupId, personasBio, empleadosJibble = [], aliases = {} }) {
+// Clave de alias por id del aparato: permite separar DOS personas del aparato
+// con el MISMO nombre (caso real América: «FABIOLA» id 31 = Rojas y «fabiola»
+// id 13 = Nava — por nombre normalizado colapsaban a una sola clave y era
+// imposible asignarlas a empleados distintos).
+export const aliasKeyBio = idBio => 'id:' + idBio
+const aliasDe = (aliases, p) => aliases[aliasKeyBio(p.idBio)] ?? aliases[normalizarNombre(p.nombre)]
+
+export function resolverPersonasBio({ groupId, personasBio, empleadosJibble = [], aliases = {}, marcas = null }) {
   const mapa = {}
-  const noEncontrados = []
-  const creados = []            // idBio que deben existir como persona sintética
+  const noEncontrados = []   // nombres crudos (compatibilidad con CLI/reportes)
+  const pendientes = []      // [{ idBio, nombre }] — para que la UI asigne por id
+  const creados = []         // idBio que deben existir como persona sintética
+  const avisos = []
   if (!empleadosJibble.length) {
     for (const p of (personasBio || [])) {
       mapa[p.idBio] = personaSinteticaId(groupId, p.idBio)
       creados.push(p)
     }
-    return { mapa, noEncontrados, creados }
+    return { mapa, noEncontrados, pendientes, creados, avisos }
   }
   const indice = construirIndiceNombres(empleadosJibble)
   for (const p of (personasBio || [])) {
-    const norm = normalizarNombre(p.nombre)
-    const alias = aliases[norm]
+    const alias = aliasDe(aliases, p)
     if (alias === ALIAS_CREAR) {
       // Empleado que solo existe en el aparato: id sintético estable.
       mapa[p.idBio] = personaSinteticaId(groupId, p.idBio)
@@ -213,16 +221,45 @@ export function resolverPersonasBio({ groupId, personasBio, empleadosJibble = []
     if (alias) { mapa[p.idBio] = alias; continue }   // personId o 'IGNORAR'
     const emp = matchEmpleado(indice, p.nombre)
     if (emp) mapa[p.idBio] = emp.id
-    else { mapa[p.idBio] = null; noEncontrados.push(p.nombre) }
+    else {
+      mapa[p.idBio] = null
+      noEncontrados.push(p.nombre)
+      pendientes.push({ idBio: p.idBio, nombre: p.nombre })
+    }
   }
-  return { mapa, noEncontrados, creados }
+
+  // Guard: dos ids del aparato asignados a la MISMA persona que marcaron el
+  // MISMO día — sus fichajes chocarían (id attendance = bio-<persona>-<fecha>).
+  // Solo se evalúa si el caller pasa las marcas (la web lo hace; el CLI no).
+  if (marcas?.length) {
+    const porPersona = new Map()
+    for (const [idBio, pid] of Object.entries(mapa)) {
+      if (!pid || pid === 'IGNORAR') continue
+      if (!porPersona.has(pid)) porPersona.set(pid, [])
+      porPersona.get(pid).push(String(idBio))
+    }
+    for (const ids of porPersona.values()) {
+      if (ids.length < 2) continue
+      const fechas = new Map() // date → Set<idBio>
+      for (const m of marcas) {
+        if (!ids.includes(String(m.idBio))) continue
+        if (!fechas.has(m.date)) fechas.set(m.date, new Set())
+        fechas.get(m.date).add(String(m.idBio))
+      }
+      const chocan = [...fechas].filter(([, s]) => s.size > 1).map(([d]) => d)
+      if (!chocan.length) continue
+      const nombres = ids.map(id => (personasBio || []).find(p => String(p.idBio) === id)?.nombre || `id ${id}`)
+      avisos.push(`${nombres.map(n => `«${n}»`).join(' y ')} del aparato están asignados al MISMO empleado pero marcaron el mismo día (${chocan.join(', ')}) — seguramente son dos personas distintas: asigna cada nombre a su empleado.`)
+    }
+  }
+  return { mapa, noEncontrados, pendientes, creados, avisos }
 }
 
 // Personas sintéticas que un local CON Jibble debe tener por decisión explícita
 // del usuario (alias 'CREAR'). La usa useJibble para inyectarlas junto a la
 // gente real, sin inventar nadie por su cuenta.
 export function sinteticosPorAlias(groupId, personasBio, aliases = {}) {
-  const marcados = (personasBio || []).filter(p => aliases[normalizarNombre(p.nombre)] === ALIAS_CREAR)
+  const marcados = (personasBio || []).filter(p => aliasDe(aliases, p) === ALIAS_CREAR)
   return personasSinteticas(groupId, marcados)
 }
 

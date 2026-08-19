@@ -11,7 +11,7 @@
 
 import * as XLSX from 'xlsx-js-style'
 import {
-  getHandle, listarCarpetas, estadoPermiso, pedirPermiso, leerCarpeta, getAliases,
+  getHandle, listarCarpetas, estadoPermiso, pedirPermiso, leerCarpeta, getAliasesTurnos,
 } from './carpeta-horarios'
 import { parseBiometricoWorkbook } from './biometrico'
 import { guardarBioMes, mesesConDatos, borrarBioMes } from './biometrico-store'
@@ -55,7 +55,7 @@ export async function sincronizarLocalHorarios(groupId, empleados, acciones, { c
   const abierta = await abrirCarpeta(groupId, conGesto)
   if (abierta.estado) return { tipo: 'horarios', groupId, estado: abierta.estado }
 
-  const lectura = await leerCarpeta(abierta.handle, empleados || [], { aliases: getAliases(groupId) })
+  const lectura = await leerCarpeta(abierta.handle, empleados || [], { aliases: getAliasesTurnos(groupId) })
   const semanas = Object.keys(lectura.aplicarPorSemana)
 
   // Protecciones de la recarga fiel: sin ellas, un archivo que OneDrive no bajó
@@ -96,6 +96,7 @@ export async function sincronizarLocalHorarios(groupId, empleados, acciones, { c
     semanasAplicadas, semanasDetectadas: semanas, personasBorradas,
     archivosLeidos: lectura.archivosLeidos, archivosOmitidos: lectura.archivosOmitidos || [],
     warnings: lectura.warnings, noEncontrados: lectura.noEncontrados,
+    ambiguos: lectura.ambiguos || [],
     carpeta: abierta.handle.name,
   }
 }

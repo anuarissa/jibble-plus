@@ -22,7 +22,7 @@ import { FuenteBiometricoPanel } from '../components/sueldos/FuenteBiometricoPan
 import { resumenSueldos } from '../utils/resumen-sueldos'
 import { MODELO_MENSUAL_DEFAULT } from '../utils/payroll'
 import { celdaToRow, comentarioAnomalia } from '../utils/stats'
-import { resolverPersonasBio, marcasToAttendance } from '../utils/biometrico'
+import { resolverPersonasBio, marcasToAttendance, aliasKeyBio } from '../utils/biometrico'
 import { exportLiquidacionEmpleado, multaDelDia, noRegistroDelDia } from '../utils/liquidacion-empleado'
 import { marcasEnRango, personasBioDeLocal, mesesConDatos, localesConBio, useBioVersion } from '../utils/biometrico-store'
 import { getAliases, setAlias } from '../utils/carpeta-horarios'
@@ -145,15 +145,34 @@ export default function ResumenSueldos({ cfg }) {
   // Asistencia desde el biométrico: marcas del rango + resolución de nombres
   // (local con Jibble → alias/matcher a personId reales; sin Jibble → sintéticos).
   const attendanceBio = useMemo(() => {
-    if (!grupoActivo) return { rows: [], noEncontrados: [] }
+    if (!grupoActivo) return { rows: [], noEncontrados: [], pendientes: [], avisos: [], nombresDuplicados: new Set() }
     const iniStr = format(ini, 'yyyy-MM-dd')
     const finStr = format(fin, 'yyyy-MM-dd')
     const personasBio = personasBioDeLocal(grupoActivo)
     const empleadosJibble = esLocalBio ? [] : empleadosLocal.filter(p => !p.synthetic)
-    const { mapa, noEncontrados } = resolverPersonasBio({
-      groupId: grupoActivo, personasBio, empleadosJibble, aliases: getAliases(grupoActivo),
+    const marcas = marcasEnRango(grupoActivo, iniStr, finStr)
+    const { mapa, noEncontrados, pendientes, avisos } = resolverPersonasBio({
+      groupId: grupoActivo, personasBio, empleadosJibble, aliases: getAliases(grupoActivo), marcas,
     })
-    return { rows: marcasToAttendance(marcasEnRango(grupoActivo, iniStr, finStr), { groupId: grupoActivo, mapa }), noEncontrados }
+    // Días con marcas por id del aparato — se muestran junto al nombre para
+    // distinguir a dos personas homónimas (ej. FABIOLA 26 días vs fabiola 2 días).
+    const diasPorId = {}
+    for (const m of marcas) diasPorId[m.idBio] = (diasPorId[m.idBio] || 0) + 1
+    // Nombres repetidos en el aparato → el alias se guarda por id, no por nombre.
+    const vistos = new Map()
+    const nombresDuplicados = new Set()
+    for (const p of personasBio) {
+      const n = String(p.nombre || '').trim().toLowerCase()
+      if (vistos.has(n) && vistos.get(n) !== String(p.idBio)) nombresDuplicados.add(n)
+      else vistos.set(n, String(p.idBio))
+    }
+    return {
+      rows: marcasToAttendance(marcas, { groupId: grupoActivo, mapa }),
+      noEncontrados,
+      pendientes: pendientes.map(p => ({ ...p, dias: diasPorId[p.idBio] || 0 })),
+      avisos,
+      nombresDuplicados,
+    }
   }, [grupoActivo, ini, fin, empleadosLocal, esLocalBio, bioVersion, aliasVersion])
 
   const attendanceFuente = fuenteEfectiva === 'bio' ? attendanceBio.rows : data.attendance
@@ -357,11 +376,18 @@ export default function ResumenSueldos({ cfg }) {
           groupId={grupoActivo}
           meses={mesesConDatos(grupoActivo)}
           noEncontrados={attendanceBio.noEncontrados}
+          pendientes={attendanceBio.pendientes}
+          avisos={attendanceBio.avisos}
           deEsteLocal={empleadosLocal.filter(p => !p.synthetic)}
           sinLocal={(data.peopleAll || []).filter(p => !p.groupId && !p.synthetic)}
           deOtroLocal={(data.peopleAll || []).filter(p => p.groupId && p.groupId !== grupoActivo && !p.synthetic)}
-          onAlias={(nombre, valor) => {
-            setAlias(grupoActivo, nombre, valor)
+          onAlias={(nombre, valor, idBio) => {
+            // Nombre repetido en el aparato (dos Fabiolas) → alias por id del
+            // aparato, así cada una puede ir a un empleado distinto. Nombre único
+            // → alias por nombre (sobrevive si el aparato re-registra a la persona
+            // con otro id).
+            const esDuplicado = attendanceBio.nombresDuplicados.has(String(nombre || '').trim().toLowerCase())
+            setAlias(grupoActivo, esDuplicado && idBio != null ? aliasKeyBio(idBio) : nombre, valor)
             // Si la persona elegida es de otro local (o no tenía), mudarla a este:
             // sus marcas del aparato dicen que trabaja acá.
             const elegido = (data.peopleAll || []).find(p => p.id === valor)

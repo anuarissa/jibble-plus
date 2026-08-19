@@ -65,21 +65,15 @@ export const EMPLOYEE_OVERRIDES = {
   },
   // === SBARRO AMÉRICA ===
   // Horario default: 16:00-23:00 todos los días, miércoles libre
-  // Fabiola Rojas
+  // Fabiola Rojas — SIN defaultWeek a propósito: hoy es cajera AM (cuaderno de
+  // horarios) y el default viejo de tarde (16:00-23:00) le medía las tardanzas
+  // contra las 16:00. Su horario real viene del Excel; un día sin Excel no se
+  // evalúa (regla de Anuar: sin horario cargado no se inventan multas).
   '93a65596-276e-4b8b-93bd-56d0017621ca': {
     nombre: 'Fabiola Rojas',
     groupId: '3ab9e1ac-b61b-462e-9322-b5575e710fac', // SBARRO AMERICA
     sueldoMensual: 3300,
     tarifa: 13.75,
-    defaultWeek: {
-      '1': { startTime: '16:00', endTime: '23:00' },
-      '2': { startTime: '16:00', endTime: '23:00' },
-      '3': 'OFF',
-      '4': { startTime: '16:00', endTime: '23:00' },
-      '5': { startTime: '16:00', endTime: '23:00' },
-      '6': { startTime: '16:00', endTime: '23:00' },
-      '7': { startTime: '16:00', endTime: '23:00' },
-    },
   },
   // Axel Acosta
   '6afcf65b-e0d7-477a-8b92-c16590fcfbfe': {
@@ -172,6 +166,26 @@ export const WORKSPACE_DEFAULT_GROUP = {
 const OFICINAS_NOMBRES = new Set(['leisy oficina', 'erika bascope', 'vladimir hooper', 'oficinas tuesday'])
 export function esPersonaDeOficinas(fullName) {
   return OFICINAS_NOMBRES.has(String(fullName || '').trim().toLowerCase())
+}
+
+// Alias FIJOS de nombres del cuaderno de horarios → personId (o 'IGNORAR'),
+// compartidos por la web y el CLI (antes solo existían en reporte-mensual-core y
+// la web no los tenía: "FABIOLA" era ambigua entre Rojas y Nava, el matcher la
+// descartaba y su horario del Excel nunca se aplicaba). Los alias que el usuario
+// guarda desde la página (jibble_alias_nombres_v1) tienen prioridad sobre estos.
+// OJO: aplican SOLO al matching de horarios — el biométrico se resuelve aparte
+// (allí hay DOS Fabiolas del aparato y se asignan por id del aparato).
+export const ALIAS_TURNOS_FIJOS = {
+  [GROUP_IDS.SBARRO_HUPER]: {
+    daniela: 'IGNORAR',                                      // gerente (filas 00:00)
+    giussep: '0fd05836-c25d-4fc9-ad3d-97bb14524a06',         // Giuseppe Argento (typo de 3 letras, fuera del alcance del matcher)
+    andy: 'IGNORAR',                                         // apoyo EXTRA, no registrado en Jibble
+    nuevo: 'IGNORAR',                                        // fila placeholder del gerente
+  },
+  [GROUP_IDS.SBARRO_AMERICA]: {
+    anuar: 'IGNORAR',                                        // el dueño no entra a planilla
+    fabiola: '93a65596-276e-4b8b-93bd-56d0017621ca',         // Fabiola Rojas (la cajera AM del cuaderno; Nava también existe en Jibble → ambigüedad)
+  },
 }
 
 // Locales SIN cuenta Jibble: su personal existe SOLO en el biométrico físico

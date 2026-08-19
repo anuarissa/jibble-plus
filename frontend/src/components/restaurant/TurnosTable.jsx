@@ -346,20 +346,40 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
         </div>
       )}
 
-      {/* Nombres del Excel que no matchearon con ningún empleado → resolver una vez */}
-      {carpeta.resultado?.noEncontrados?.length > 0 && (
-        <div className="mb-4 rounded-xl border border-warn/40 bg-warn/5 p-3">
+      {/* Nombres del Excel que no matchearon con ningún empleado → resolver una vez.
+          Los AMBIGUOS (matchean a varios, ej. dos Fabiolas) van primero con las
+          opciones acotadas a los candidatos — antes ni siquiera aparecían acá. */}
+      {(carpeta.resultado?.noEncontrados?.length > 0 || carpeta.resultado?.ambiguos?.length > 0) && (
+        <div className="mb-4 rounded-xl border border-warn/40 bg-warn/5 p-3" data-testid="panel-nombres-turnos">
           <div className="flex items-start gap-3">
             <AlertCircle size={18} className="text-warn mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="font-semibold text-ink-50 text-sm mb-1">
-                Nombres del Excel sin empleado asignado ({carpeta.resultado.noEncontrados.length})
+                Nombres del Excel sin empleado asignado ({(carpeta.resultado.noEncontrados?.length || 0) + (carpeta.resultado.ambiguos?.length || 0)})
               </div>
               <p className="text-xs text-ink-300 mb-2">
                 Elegí a quién corresponde cada nombre (se recuerda para siempre) o marcá "Ignorar siempre" (ej. personal que ya no trabaja).
               </p>
               <ul className="space-y-1.5">
-                {carpeta.resultado.noEncontrados.map(nombre => (
+                {(carpeta.resultado.ambiguos || []).map(a => (
+                  <li key={'amb-' + a.nombre} className="flex items-center gap-2 flex-wrap" data-testid="fila-ambiguo">
+                    <span className="font-mono text-sm text-ink-50">{a.nombre}</span>
+                    <span className="badge bg-warn/15 border border-warn/30 text-warn text-[10px]">hay {a.candidatos.length} con ese nombre</span>
+                    <span className="text-ink-400 text-xs">→</span>
+                    <select
+                      defaultValue=""
+                      onChange={e => handleResolverNombre(a.nombre, e.target.value)}
+                      className="bg-bg-700 border border-white/10 rounded-lg text-xs px-2 py-1.5 text-ink-100"
+                    >
+                      <option value="" disabled>¿Cuál es?</option>
+                      {a.candidatos.map(c => (
+                        <option key={c.id} value={c.id}>{c.fullName}</option>
+                      ))}
+                      <option value="IGNORAR">— Ignorar siempre —</option>
+                    </select>
+                  </li>
+                ))}
+                {(carpeta.resultado.noEncontrados || []).map(nombre => (
                   <li key={nombre} className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-sm text-ink-50">{nombre}</span>
                     <span className="text-ink-400 text-xs">→</span>
