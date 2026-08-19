@@ -184,23 +184,46 @@ export function personasSinteticas(groupId, personasBio) {
 //   - con empleados Jibble (Sbarro): alias guardado > matcher de nombres (mismo de
 //     los Excel de turnos). Sin match → null + nombre en noEncontrados (panel UI).
 // aliases: { [nombreNormalizado]: personId | 'IGNORAR' } (jibble_alias_nombres_v1 del local)
+// Alias especial: "esta persona del aparato NO está en Jibble, créala como
+// empleado del local (solo biométrico)". Se guarda en jibble_alias_nombres_v1,
+// que ya se publica a los demás dispositivos.
+export const ALIAS_CREAR = 'CREAR'
+
 export function resolverPersonasBio({ groupId, personasBio, empleadosJibble = [], aliases = {} }) {
   const mapa = {}
   const noEncontrados = []
+  const creados = []            // idBio que deben existir como persona sintética
   if (!empleadosJibble.length) {
-    for (const p of (personasBio || [])) mapa[p.idBio] = personaSinteticaId(groupId, p.idBio)
-    return { mapa, noEncontrados }
+    for (const p of (personasBio || [])) {
+      mapa[p.idBio] = personaSinteticaId(groupId, p.idBio)
+      creados.push(p)
+    }
+    return { mapa, noEncontrados, creados }
   }
   const indice = construirIndiceNombres(empleadosJibble)
   for (const p of (personasBio || [])) {
     const norm = normalizarNombre(p.nombre)
     const alias = aliases[norm]
+    if (alias === ALIAS_CREAR) {
+      // Empleado que solo existe en el aparato: id sintético estable.
+      mapa[p.idBio] = personaSinteticaId(groupId, p.idBio)
+      creados.push(p)
+      continue
+    }
     if (alias) { mapa[p.idBio] = alias; continue }   // personId o 'IGNORAR'
     const emp = matchEmpleado(indice, p.nombre)
     if (emp) mapa[p.idBio] = emp.id
     else { mapa[p.idBio] = null; noEncontrados.push(p.nombre) }
   }
-  return { mapa, noEncontrados }
+  return { mapa, noEncontrados, creados }
+}
+
+// Personas sintéticas que un local CON Jibble debe tener por decisión explícita
+// del usuario (alias 'CREAR'). La usa useJibble para inyectarlas junto a la
+// gente real, sin inventar nadie por su cuenta.
+export function sinteticosPorAlias(groupId, personasBio, aliases = {}) {
+  const marcados = (personasBio || []).filter(p => aliases[normalizarNombre(p.nombre)] === ALIAS_CREAR)
+  return personasSinteticas(groupId, marcados)
 }
 
 // "HH:MM" hora Bolivia (UTC-4 fija, espejo de lateness.js) → ISO UTC.

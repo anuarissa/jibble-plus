@@ -107,7 +107,21 @@ export function setAlias(groupId, nombreExcel, personIdOIgnorar) {
   const all = readAliasStore()
   all[groupId + ':' + normalizarNombre(nombreExcel)] = personIdOIgnorar
   localStorage.setItem(KEY_ALIASES, JSON.stringify(all))
+  // Avisar a la app: los alias deciden a quién pertenecen las marcas del
+  // aparato (y si hay que crear una persona nueva), así que hay que recalcular.
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVENTO_ALIAS))
 }
+
+export const EVENTO_ALIAS = 'jibble:alias-updated'
+
+// Versión monotónica de los alias — dep de useMemo para recalcular al cambiarlos.
+let versionAlias = 0
+if (typeof window !== 'undefined') window.addEventListener(EVENTO_ALIAS, () => { versionAlias++ })
+export function subscribeAlias(cb) {
+  window.addEventListener(EVENTO_ALIAS, cb)
+  return () => window.removeEventListener(EVENTO_ALIAS, cb)
+}
+export function getAliasVersion() { return versionAlias }
 
 // === Lectura + parseo de la carpeta ===
 // Devuelve { aplicarPorSemana, warnings, noEncontrados, archivosLeidos, celdasOk, celdasIgnoradas }

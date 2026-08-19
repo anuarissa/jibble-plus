@@ -26,7 +26,18 @@ import { resolverPersonasBio, marcasToAttendance } from '../utils/biometrico'
 import { exportLiquidacionEmpleado, multaDelDia, noRegistroDelDia } from '../utils/liquidacion-empleado'
 import { marcasEnRango, personasBioDeLocal, mesesConDatos, localesConBio, useBioVersion } from '../utils/biometrico-store'
 import { getAliases, setAlias } from '../utils/carpeta-horarios'
-import { asumirSemanasFaltantes, isoWeekKey } from '../utils/turnos'
+import { asumirSemanasFaltantes, isoWeekKey, lunesDeSemana } from '../utils/turnos'
+import { rutaSugerida } from '../config/carpetas-locales'
+
+// '2026-W28' → '6–12 jul' (para decir qué semana falta en cristiano)
+function rangoDeSemana(weekKey) {
+  const [y, w] = weekKey.split('-W')
+  const ene4 = new Date(Number(y), 0, 4)
+  const lunW1 = lunesDeSemana(ene4)
+  const lun = addDays(lunW1, (Number(w) - 1) * 7)
+  const dom = addDays(lun, 6)
+  return `${format(lun, 'd')}–${format(dom, 'd MMM')}`
+}
 import { formatBs, formatHoras, formatFecha, formatFechaCorta, formatMesAno, formatDiaLargo } from '../utils/format'
 import { exportCSV, exportExcel } from '../utils/export'
 
@@ -147,15 +158,18 @@ export default function ResumenSueldos({ cfg }) {
 
   const attendanceFuente = fuenteEfectiva === 'bio' ? attendanceBio.rows : data.attendance
 
-  // REGLA DE LA CASA (solo locales biométricos): semana del rango sin horario en el
-  // cuaderno → se AVISA y se asume el horario de la semana más cercana con datos.
-  const { turnosEfectivos, semanasAsumidas } = useMemo(() => {
-    if (!esLocalBio) return { turnosEfectivos: cfg.turnos, semanasAsumidas: [] }
+  // Semanas del rango sin horario cargado para este local. SIEMPRE se DETECTAN
+  // (para avisar qué falta); solo en locales biométricos se RELLENAN con la
+  // semana más cercana — en los demás no se inventa nada: sin horario no hay
+  // falta ni multa (decisión de Anuar).
+  const { turnosEfectivos, semanasAsumidas, semanasSinHorario } = useMemo(() => {
     const weekKeys = []
     for (let d = startOfWeek(ini, { weekStartsOn: 1 }); d <= fin; d = addDays(d, 7)) weekKeys.push(isoWeekKey(d))
     const ids = empleadosLocal.map(p => p.id)
     const { relleno, semanasAsumidas } = asumirSemanasFaltantes(cfg.turnos, weekKeys, ids)
-    return { turnosEfectivos: relleno, semanasAsumidas }
+    const faltantes = semanasAsumidas.map(s => s.semana)
+    if (!esLocalBio) return { turnosEfectivos: cfg.turnos, semanasAsumidas: [], semanasSinHorario: faltantes }
+    return { turnosEfectivos: relleno, semanasAsumidas, semanasSinHorario: [] }
   }, [esLocalBio, cfg.turnos, ini, fin, empleadosLocal])
 
   const resumen = useMemo(() => {
@@ -343,11 +357,39 @@ export default function ResumenSueldos({ cfg }) {
           groupId={grupoActivo}
           meses={mesesConDatos(grupoActivo)}
           noEncontrados={attendanceBio.noEncontrados}
-          empleadosParaAlias={esLocalBio ? [] : empleadosLocal.filter(p => !p.synthetic)}
-          onAlias={(nombre, valor) => { setAlias(grupoActivo, nombre, valor); setAliasVersion(v => v + 1) }}
+          deEsteLocal={empleadosLocal.filter(p => !p.synthetic)}
+          sinLocal={(data.peopleAll || []).filter(p => !p.groupId && !p.synthetic)}
+          deOtroLocal={(data.peopleAll || []).filter(p => p.groupId && p.groupId !== grupoActivo && !p.synthetic)}
+          onAlias={(nombre, valor) => {
+            setAlias(grupoActivo, nombre, valor)
+            // Si la persona elegida es de otro local (o no tenía), mudarla a este:
+            // sus marcas del aparato dicen que trabaja acá.
+            const elegido = (data.peopleAll || []).find(p => p.id === valor)
+            if (elegido && elegido.groupId !== grupoActivo) cfg.setPersonGroup(valor, grupoActivo)
+            setAliasVersion(v => v + 1)
+          }}
           sinDatosEnRango={attendanceBio.rows.length === 0}
           rangoLabel={rangoLabel}
         />
+      )}
+
+      {/* Semanas del rango SIN horario cargado (no se asume nada: esos días no se evalúan) */}
+      {semanasSinHorario.length > 0 && (
+        <div className="mb-6 rounded-xl border border-warn/40 bg-warn/5 p-4 flex items-start gap-3" data-testid="banner-sin-horario-semanas">
+          <AlertTriangle size={20} className="text-warn mt-0.5 shrink-0" />
+          <div className="text-sm text-ink-200">
+            <span className="font-semibold text-warn">
+              Faltan los horarios de {semanasSinHorario.length} semana{semanasSinHorario.length > 1 ? 's' : ''} de este rango
+            </span>
+            {': '}{semanasSinHorario.map(rangoDeSemana).join(' · ')}.
+            <span className="block text-xs text-ink-300 mt-1">
+              Esos días no se evalúan (no cuentan como falta ni tardanza) y solo se pagan las horas marcadas.
+              Pon la planilla de esas semanas en la carpeta del local
+              {rutaSugerida(grupoActivo, 'horarios') ? <span className="font-mono text-[11px] text-ink-400"> ({rutaSugerida(grupoActivo, 'horarios')})</span> : null}
+              {' '}y usa <span className="text-ink-100 font-medium">Recargar Excels</span> — se cargan solas.
+            </span>
+          </div>
+        </div>
       )}
 
       {/* Semanas del rango sin horario en el cuaderno → horario asumido (regla de la casa) */}

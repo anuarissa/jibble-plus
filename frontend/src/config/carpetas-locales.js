@@ -15,7 +15,9 @@ export const RUTAS_SUGERIDAS = {
   },
   [GROUP_IDS.SBARRO_AMERICA]: {
     horarios: 'OneDrive\\SBARRO AMERICA\\CUADERNOS DE GERENTES SA\\PLANILLA SUPERVISORES SA\\2026\\HORARIOS 2026',
-    biometrico: 'JIBBLE APP ASISTENCIA\\DATOS LOCALES\\SBARRO AMERICA\\BIOMETRICO',
+    // Carpeta real donde Anuar guarda los exports (una subcarpeta por mes; el
+    // sync recorre 1 nivel, así que conviene conectar la carpeta del año).
+    biometrico: 'OneDrive\\Anuar\\SBARRO Cochabamba\\FORMATOS CBBA\\PAGOS SUELDOS DESDE 2017\\PAGOS SUELDOS 2026',
   },
   [GROUP_IDS.SOS_POLLO]: {
     horarios: null,      // pendiente: Anuar avisará dónde queda

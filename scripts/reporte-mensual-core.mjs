@@ -46,7 +46,8 @@ const LOCALES = [
     groupId: GROUP_IDS.SBARRO_AMERICA,
     ws: 'A',
     carpeta: 'C:/Users/anuar/OneDrive/SBARRO AMERICA/CUADERNOS DE GERENTES SA/PLANILLA SUPERVISORES SA/2026/HORARIOS 2026',
-    bioCarpeta: null, // se setea a <RAIZ>/DATOS LOCALES/SBARRO AMERICA/BIOMETRICO en generarReportes
+    // Carpeta real donde Anuar guarda los exports del aparato (una subcarpeta por mes).
+    bioCarpeta: 'C:/Users/anuar/OneDrive/Anuar/SBARRO Cochabamba/FORMATOS CBBA/PAGOS SUELDOS DESDE 2017/PAGOS SUELDOS 2026',
   },
   {
     nombre: 'SBARRO HUPER',

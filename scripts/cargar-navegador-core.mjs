@@ -15,6 +15,8 @@ import { GROUP_IDS, resolveGroupId, esPersonaDummy, EMPLOYEE_OVERRIDES } from '.
 const CARPETA_SUELDOS_TUESDAY = 'C:/Users/anuar/OneDrive/Anuar/Tuesday/SUELDOS/SUELDOS 2026'
 const CARPETA_CUADERNOS_TUESDAY = 'C:/Users/anuar/OneDrive/TUESDAY AMERICA/CUADERNOS DE GERENTES/CUADERNOS GERENTES'
 const CARPETA_HORARIOS_HUPER = 'C:/Users/anuar/OneDrive/SBARRO HUPERMALL/1- CUADERNOS/5- CUADERNOS DE GERENTES/2026 CUADERNO GERENTES'
+const CARPETA_HORARIOS_AMERICA = 'C:/Users/anuar/OneDrive/SBARRO AMERICA/CUADERNOS DE GERENTES SA/PLANILLA SUPERVISORES SA/2026/HORARIOS 2026'
+const CARPETA_BIO_AMERICA = 'C:/Users/anuar/OneDrive/Anuar/SBARRO Cochabamba/FORMATOS CBBA/PAGOS SUELDOS DESDE 2017/PAGOS SUELDOS 2026'
 
 // → { bioStore: { [groupId]: { [mes]: {marcas, personas, ts, archivo} } }, turnos: { [wk]: { [pid]: {...} } }, resumen: [...] }
 export async function armarSeed(mesStr, raiz) {
@@ -75,6 +77,36 @@ export async function armarSeed(mesStr, raiz) {
     }
   } else {
     resumen.push('SBARRO HUPER: sin credenciales _2 en backend/.env — turnos no incluidos')
+  }
+
+  // ===== SBARRO AMÉRICA: biométrico (carpeta de sueldos por mes) + horarios =====
+  const bioAme = bioDeCarpeta(CARPETA_BIO_AMERICA, mesStr)
+  if (bioAme) {
+    bioStore[GROUP_IDS.SBARRO_AMERICA] = { [mesStr]: { marcas: bioAme.marcas, personas: bioAme.personas, ts: Date.now(), archivo: bioAme.archivo } }
+    resumen.push(`SBARRO AMERICA: bio ${bioAme.archivo} (${bioAme.personas.length} personas)`)
+  } else {
+    resumen.push(`SBARRO AMERICA: SIN export biométrico de ${mesStr} en ${CARPETA_BIO_AMERICA}`)
+  }
+  // Horarios con la gente real de la cuenta A (sin grupo → América salvo Oficinas)
+  const idA = process.env.JIBBLE_API_KEY_ID?.trim(), secA = process.env.JIBBLE_API_KEY_SECRET?.trim()
+  if (idA && secA) {
+    try {
+      const clientA = makeJibbleClient(idA, secA)
+      const peopleA = await clientA.getPeople()
+      const empAme = peopleA
+        .filter(p => !esPersonaDummy(p.fullName))
+        .filter(p => EMPLOYEE_OVERRIDES[p.id]?.skip !== true)
+        .map(p => ({ ...p, groupId: resolveGroupId(p.id, p.groupId, {}, 'A', p.fullName) }))
+        .filter(p => p.groupId === GROUP_IDS.SBARRO_AMERICA)
+      const tA = turnosDeCarpeta(CARPETA_HORARIOS_AMERICA, empAme, GROUP_IDS.SBARRO_AMERICA, isoWeekKey(ini))
+      mergeTurnos(tA.aplicarPorSemana)
+      resumen.push(`SBARRO AMERICA: turnos ${Object.keys(tA.aplicarPorSemana).length} semanas de ${tA.archivos.length} planillas · ${empAme.length} empleados`)
+      if (tA.noEncontrados.length) resumen.push(`SBARRO AMERICA: nombres del Excel sin resolver: ${tA.noEncontrados.join(', ')}`)
+    } catch (e) {
+      resumen.push(`SBARRO AMERICA: no se pudieron leer turnos (${e.message})`)
+    }
+  } else {
+    resumen.push('SBARRO AMERICA: sin credenciales de la cuenta A en backend/.env — turnos no incluidos')
   }
 
   return { bioStore, turnos, resumen }

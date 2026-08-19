@@ -14,7 +14,8 @@ const labelMes = mesStr => {
 }
 
 export function FuenteBiometricoPanel({
-  carpeta, meses, noEncontrados, empleadosParaAlias, onAlias, sinDatosEnRango, rangoLabel, groupId,
+  carpeta, meses, noEncontrados, deEsteLocal = [], sinLocal = [], deOtroLocal = [],
+  onAlias, sinDatosEnRango, rangoLabel, groupId,
 }) {
   const { soportado, estado, nombreCarpeta, lastSync, resultado } = carpeta
   const rutaBio = rutaSugerida(groupId, 'biometrico')
@@ -133,14 +134,16 @@ export function FuenteBiometricoPanel({
         </div>
       )}
 
-      {/* Nombres del aparato sin empleado asignado (solo locales con gente en Jibble) */}
-      {noEncontrados.length > 0 && empleadosParaAlias.length > 0 && (
+      {/* Nombres del aparato sin empleado asignado */}
+      {noEncontrados.length > 0 && (
         <div className="surface p-4 grain" data-testid="panel-nombres-bio">
           <p className="text-sm font-medium text-ink-100 mb-1">
             Nombres del biométrico sin empleado asignado ({noEncontrados.length})
           </p>
           <p className="text-xs text-ink-400 mb-3">
-            Asigna cada nombre del aparato a su empleado (o ignóralo). Se guarda una sola vez y vale también para los horarios.
+            Asigna cada nombre del aparato a su empleado. Si trabaja aquí pero no está en Jibble, usa
+            <span className="text-ink-200"> “Crear empleado”</span> y sus horas entran igual a la planilla.
+            Se guarda una sola vez y vale también para los horarios.
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {noEncontrados.map(nombre => (
@@ -152,10 +155,25 @@ export function FuenteBiometricoPanel({
                   className="input text-xs flex-1"
                 >
                   <option value="" disabled>Asignar a…</option>
-                  {empleadosParaAlias.map(emp => (
-                    <option key={emp.id} value={emp.id}>{emp.fullName}</option>
-                  ))}
-                  <option value="IGNORAR">— Ignorar siempre —</option>
+                  {deEsteLocal.length > 0 && (
+                    <optgroup label="De este local">
+                      {deEsteLocal.map(emp => <option key={emp.id} value={emp.id}>{emp.fullName}</option>)}
+                    </optgroup>
+                  )}
+                  {sinLocal.length > 0 && (
+                    <optgroup label="Sin local asignado (se moverá a este local)">
+                      {sinLocal.map(emp => <option key={emp.id} value={emp.id}>{emp.fullName}</option>)}
+                    </optgroup>
+                  )}
+                  {deOtroLocal.length > 0 && (
+                    <optgroup label="En otro local (se moverá a este local)">
+                      {deOtroLocal.map(emp => <option key={emp.id} value={emp.id}>{emp.fullName}</option>)}
+                    </optgroup>
+                  )}
+                  <optgroup label="Si no está en Jibble">
+                    <option value="CREAR">＋ Crear empleado “{nombre}” (solo biométrico)</option>
+                    <option value="IGNORAR">— Ignorar siempre —</option>
+                  </optgroup>
                 </select>
               </div>
             ))}

@@ -164,6 +164,16 @@ export const WORKSPACE_DEFAULT_GROUP = {
   B: GROUP_IDS.SBARRO_HUPER,
 }
 
+// Cuenta A ("Principal"): solo tiene gente de SBARRO AMÉRICA y de OFICINAS, y
+// Jibble (plan gratis) no asigna grupos. Quien no tenga grupo cae en América,
+// salvo estos nombres de oficina. MISMA regla que el CLI (reporte-mensual) —
+// antes solo existía ahí, y por eso gente nueva de América (ej. Carolina
+// Villalobos) no aparecía en la web hasta asignarla a mano.
+const OFICINAS_NOMBRES = new Set(['leisy oficina', 'erika bascope', 'vladimir hooper', 'oficinas tuesday'])
+export function esPersonaDeOficinas(fullName) {
+  return OFICINAS_NOMBRES.has(String(fullName || '').trim().toLowerCase())
+}
+
 // Locales SIN cuenta Jibble: su personal existe SOLO en el biométrico físico
 // (personas sintéticas). Lista EXPLÍCITA a propósito: si un local con cuenta
 // Jibble no muestra gente (p.ej. el workspace activo excluye su cuenta), NO se
@@ -213,11 +223,18 @@ export function shouldSkipPerson(personId, userOverrides = {}) {
 // 2) override hardcodeado en EMPLOYEE_OVERRIDES.groupId
 // 3) lo que viene de Jibble (puede ser null en plan gratis)
 // 4) default por workspace de origen (ej. todo el ws B → SBARRO HUPER)
-export function resolveGroupId(personId, jibbleGroupId, userOverrides = {}, ws = undefined) {
+// 5) cuenta A sin grupo → América (o Oficinas por nombre) — pasar fullName
+export function resolveGroupId(personId, jibbleGroupId, userOverrides = {}, ws = undefined, fullName = '') {
   if (userOverrides[personId]?.groupId) return userOverrides[personId].groupId
   const hard = EMPLOYEE_OVERRIDES[personId]?.groupId
   if (hard) return hard
-  return jibbleGroupId || WORKSPACE_DEFAULT_GROUP[ws] || null
+  if (jibbleGroupId) return jibbleGroupId
+  if (WORKSPACE_DEFAULT_GROUP[ws]) return WORKSPACE_DEFAULT_GROUP[ws]
+  // Sin grupo en la cuenta Principal: Oficinas por nombre, el resto América.
+  if ((ws === 'A' || ws === '1') && fullName) {
+    return esPersonaDeOficinas(fullName) ? GROUP_IDS.OFICINAS : GROUP_IDS.SBARRO_AMERICA
+  }
+  return null
 }
 
 // Resuelve cargo final: override > Jibble position > vacío

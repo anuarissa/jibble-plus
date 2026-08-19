@@ -383,6 +383,9 @@ function parseFormatoAnuar(rows, empleados, opts = {}) {
     // Iterar empleados
     let j = i + 1
     let safety = 0
+    // Nombre del último bloque leído: lo hereda el bloque PM cuando la celda del
+    // nombre está combinada (merge vertical) y solo trae texto en la fila de arriba.
+    let ultimoNombreBloque = ''
     while (j < rows.length && safety++ < 200) {
       const r = rows[j]
       if (!r) { j++; continue }
@@ -403,7 +406,12 @@ function parseFormatoAnuar(rows, empleados, opts = {}) {
         // archivos lo "centran verticalmente" escribiéndolo en la fila de abajo).
         let nombreRaw = String(r[1] || '').trim()
         if (!nombreRaw) nombreRaw = String(filaSalida[1] || '').trim()
+        // CELDA COMBINADA: cuando una persona tiene bloque AM y PM, el nombre
+        // suele estar solo en la primera fila del merge (ej. B40:B45). Sin esto
+        // el bloque PM se descartaba entero y se perdían esos turnos.
+        if (!nombreRaw) nombreRaw = ultimoNombreBloque
         if (!nombreRaw) { j += 3; continue }
+        ultimoNombreBloque = nombreRaw
 
         // Alias resueltos a mano tienen prioridad sobre el matching automático.
         const alias = aliases[normalizar(nombreRaw)]
@@ -447,6 +455,15 @@ function parseFormatoAnuar(rows, empleados, opts = {}) {
         }
         j += 3
       } else {
+        // Fila con NOMBRE pero sin ENTRADA/SALIDA en la columna D: el bloque no
+        // se puede leer (le falta la estructura). Antes se ignoraba en silencio
+        // y la persona desaparecía sin aparecer siquiera en "nombres sin
+        // resolver" (caso real: el bloque BUFFET del cuaderno de América).
+        const posibleNombre = String(r[1] || '').trim()
+        if (esReciente && posibleNombre && posibleNombre.length > 2 && !colD && !/^\d+$/.test(posibleNombre)) {
+          const aviso = `"${posibleNombre}": su fila no tiene ENTRADA/SALIDA en el cuaderno — no se pudo leer su horario`
+          if (!warnings.includes(aviso)) warnings.push(aviso)
+        }
         j++
       }
     }
@@ -619,7 +636,12 @@ function normalizarHora(raw) {
 }
 
 function excelTimeToHHMM(n) {
-  if (n < 0 || n >= 1) return null
+  if (n < 0 || n > 1) return null
+  // 1 = medianoche (24:00) en las planillas: cierre del turno de noche. Se mapea
+  // a 23:59 porque parseHora rechaza 24:00 y una salida "00:00" se leería como
+  // salida ANTES de la entrada. Antes devolvía null → "Falta salida" y el día
+  // se perdía (pasaba con los viernes/sábados de varios turnos PM).
+  if (n === 1) return '23:59'
   const totalMin = Math.round(n * 24 * 60)
   const h = Math.floor(totalMin / 60)
   const min = totalMin % 60
@@ -629,8 +651,11 @@ function excelTimeToHHMM(n) {
 function parseHora(s) {
   if (!s) return null
   const str = String(s).trim()
-  // Formato HH:MM
-  const m = str.match(/^(\d{1,2}):(\d{2})$/)
+  // Formato HH:MM — se acepta también "23.00" / "23,00" (los gerentes a veces
+  // escriben la hora con punto y Excel la guarda como texto; sin esto el turno
+  // se perdía con "Hora no reconocida"). Las fracciones de día (0.66) ya se
+  // convirtieron antes en normalizarHora, así que acá no hay ambigüedad.
+  const m = str.match(/^(\d{1,2})[:.,](\d{2})$/)
   if (m) {
     const h = parseInt(m[1])
     const min = parseInt(m[2])

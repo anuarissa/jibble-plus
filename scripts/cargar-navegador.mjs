@@ -47,8 +47,8 @@ const { armarSeed } = await import(pathToFileURL(outFile).href)
 console.log(`\n════════ CARGAR ${mes} EN EL NAVEGADOR (Edge → ${ORIGEN}) ════════`)
 const seed = await armarSeed(mes, RAIZ)
 for (const linea of seed.resumen) console.log('  ·', linea)
-if (!Object.keys(seed.bioStore).length) {
-  console.error('  ✗ Nada que cargar (sin biométricos del mes). Abortando sin tocar el navegador.')
+if (!Object.keys(seed.bioStore).length && !Object.keys(seed.turnos).length) {
+  console.error('  ✗ Nada que cargar (ni biométricos ni horarios del mes). Abortando sin tocar el navegador.')
   process.exit(1)
 }
 

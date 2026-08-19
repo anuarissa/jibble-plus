@@ -7,8 +7,10 @@ import { format, addDays } from 'date-fns'
 import * as jibble from '../api/jibble'
 import { getScheduleForPerson, shouldSkipPerson, resolveGroupId, resolveCargo, EMPLOYEE_OVERRIDES, esPersonaDummy, localOculto, GRUPOS_SOLO_BIOMETRICO } from '../config/employees'
 import { useActiveWorkspace } from './useActiveWorkspace'
-import { personasSinteticas } from '../utils/biometrico'
+import { personasSinteticas, sinteticosPorAlias } from '../utils/biometrico'
 import { readBio, useBioVersion } from '../utils/biometrico-store'
+import { getAliases } from '../utils/carpeta-horarios'
+import { useAliasVersion } from './useAliasVersion'
 
 // Skip hardcoded (Owner) — siempre filtrar, no editable por usuario
 function EMPLOYEE_HARDCODED_SKIP(personId) {
@@ -84,8 +86,9 @@ export function useJibble(personOverrides = {}, locales = {}) {
     [groupsAll, locales]
   )
 
-  // Cambia cuando se sincroniza un biométrico → re-inyectar sintéticos
+  // Cambian al sincronizar un biométrico o al resolver un nombre del aparato
   const bioVersion = useBioVersion()
+  const aliasVersion = useAliasVersion()
 
   // PEOPLE_ALL: incluye los hidden, sin filtrar (para pantalla Empleados).
   // Además inyecta PERSONAS SINTÉTICAS del biométrico físico, SOLO para locales
@@ -99,34 +102,39 @@ export function useJibble(personOverrides = {}, locales = {}) {
       .filter(p => !esPersonaDummy(p.fullName)) // cuentas dummy del local (ej. "Sbarro Huper")
       .map(p => ({
         ...p,
-        // __ws = workspace de origen (lo etiqueta el backend al fusionar cuentas)
-        groupId: resolveGroupId(p.id, p.groupId, personOverrides, p.__ws),
+        // __ws = workspace de origen (lo etiqueta el backend al fusionar cuentas).
+        // fullName: para la regla de la cuenta A (sin grupo → América u Oficinas).
+        groupId: resolveGroupId(p.id, p.groupId, personOverrides, p.__ws, p.fullName),
         position: resolveCargo(p.id, p.position) || p.position,
         hidden: !!personOverrides[p.id]?.hidden,
       }))
     const gruposConGente = new Set(jibblePeople.map(p => p.groupId))
     const bio = readBio()
     const sinteticos = []
+    const conCargo = p => ({
+      ...p,
+      position: resolveCargo(p.id, '') || personOverrides[p.id]?.cargo || '',
+      hidden: !!personOverrides[p.id]?.hidden,
+    })
     for (const groupId of Object.keys(bio)) {
-      // SOLO locales explícitamente sin cuenta Jibble. Un local con Jibble puede
-      // venir "vacío" porque el workspace activo excluye su cuenta — inventarle
-      // sintéticos rompería el cruce con turnos/tarifas por personId real.
-      if (!GRUPOS_SOLO_BIOMETRICO.has(groupId)) continue
-      if (gruposConGente.has(groupId)) continue
       const porId = new Map()
       for (const mesStr of Object.keys(bio[groupId]).sort()) {
         for (const p of (bio[groupId][mesStr].personas || [])) porId.set(p.idBio, p)
       }
-      for (const p of personasSinteticas(groupId, [...porId.values()])) {
-        sinteticos.push({
-          ...p,
-          position: resolveCargo(p.id, '') || personOverrides[p.id]?.cargo || '',
-          hidden: !!personOverrides[p.id]?.hidden,
-        })
+      const personasBio = [...porId.values()]
+      // Locales SIN cuenta Jibble (Tuesday): todo su personal es del aparato.
+      // Un local con Jibble puede venir "vacío" porque el workspace activo
+      // excluye su cuenta — inventarle sintéticos rompería el cruce por personId.
+      if (GRUPOS_SOLO_BIOMETRICO.has(groupId) && !gruposConGente.has(groupId)) {
+        for (const p of personasSinteticas(groupId, personasBio)) sinteticos.push(conCargo(p))
+        continue
       }
+      // Locales CON Jibble: solo los nombres que el usuario marcó como
+      // "crear empleado (solo biométrico)" — decisión explícita, nunca automática.
+      for (const p of sinteticosPorAlias(groupId, personasBio, getAliases(groupId))) sinteticos.push(conCargo(p))
     }
     return [...jibblePeople, ...sinteticos]
-  }, [raw.peopleRaw, personOverrides, bioVersion])
+  }, [raw.peopleRaw, personOverrides, bioVersion, aliasVersion])
 
   // PEOPLE: lista activa (sin Owner ni hidden) — la que usan Dashboard, Restaurant, etc.
   const people = useMemo(() => {
