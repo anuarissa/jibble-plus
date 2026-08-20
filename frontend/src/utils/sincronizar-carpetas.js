@@ -144,14 +144,40 @@ export async function sincronizarLocalBiometrico(groupId, { conGesto = false, fi
   }
 }
 
+// De todas las carpetas conectadas, decide cuáles ya tienen permiso y cuál es
+// la PRIMERA pendiente (la única a la que un click puede pedirle permiso: el
+// navegador consume la activación del gesto en el primer requestPermission).
+// estados: [{ key, permiso: 'granted'|'prompt'|'denied'|'none' }]
+// → { listas: [key], pendientes: [key], pedirA: key|null }
+export function particionarPorPermiso(estados) {
+  const listas = estados.filter(e => e.permiso === 'granted').map(e => e.key)
+  const pendientes = estados.filter(e => e.permiso === 'prompt' || e.permiso === 'denied').map(e => e.key)
+  return { listas, pendientes, pedirA: pendientes[0] ?? null }
+}
+
 // TODAS las carpetas conectadas (horarios + biométrico de todos los locales).
 //   peoplePorLocal: { [groupId]: empleados[] }
 //   acciones: { setTurnosSemana, reemplazarTurnosDeLocal }
-// El bulk corre SIN pedir permiso (pedirPermiso consume la activación del gesto
-// y solo el primero sería fiable) → los que lo necesiten se listan para
-// re-otorgarlo de a uno desde Configuración.
-export async function recargarTodo({ peoplePorLocal = {}, acciones, fiel = false, turnosActuales = null } = {}) {
+//   conGesto: viene de un click → se usa para pedir permiso a UNA carpeta
+//     pendiente (límite del navegador: un permiso por gesto). Se pide ANTES de
+//     leer nada, porque la activación del click expira en segundos. Las demás
+//     pendientes se devuelven en requierenPermiso para encadenar click a click.
+export async function recargarTodo({ peoplePorLocal = {}, acciones, fiel = false, turnosActuales = null, conGesto = false } = {}) {
   const keys = await listarCarpetas()
+
+  // Pasada previa de permisos (barata: no lee archivos).
+  const estados = []
+  for (const key of keys) {
+    const handle = await getHandle(key)
+    estados.push({ key, permiso: handle ? await estadoPermiso(handle) : 'none' })
+  }
+  const { pedirA } = particionarPorPermiso(estados)
+  if (conGesto && pedirA != null) {
+    // Primero el permiso, con el gesto todavía vivo. Si Anuar elige
+    // "Permitir en cada visita", este local no vuelve a preguntar nunca.
+    try { await pedirPermiso(await getHandle(pedirA)) } catch { /* denegado → quedará en requierenPermiso */ }
+  }
+
   const resultados = []
   for (const key of keys) {
     const esBio = String(key).startsWith('bio:')

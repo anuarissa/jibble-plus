@@ -1,14 +1,14 @@
 // Panel de Configuración: todas las carpetas de Excel conectadas (horarios y
-// biométrico de cada local), con su última sincronización y acciones. Acá se
-// resuelven los permisos que el navegador vuelve a pedir — el botón global
-// "Recargar Excels" no puede otorgarlos en lote (el navegador solo acepta uno
-// por click).
+// biométrico de cada local), con su última sincronización y acciones. El botón
+// "Recargar Excels" pide los permisos vencidos de a uno por click (límite del
+// navegador); acá además se VE cuál carpeta quedó pidiendo permiso y se puede
+// resolver individualmente.
 
 import { useCallback, useEffect, useState } from 'react'
 import { FolderSync, FolderOpen, FolderCheck, RefreshCw, X, CalendarDays, Fingerprint, AlertTriangle } from 'lucide-react'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
-import { listarCarpetas, conectarCarpeta, desconectarCarpeta, soportaCarpetas } from '../utils/carpeta-horarios'
+import { listarCarpetas, conectarCarpeta, desconectarCarpeta, soportaCarpetas, getHandle, estadoPermiso } from '../utils/carpeta-horarios'
 import { bioKey, sincronizarLocalHorarios, sincronizarLocalBiometrico } from '../utils/sincronizar-carpetas'
 import { mesesConDatos } from '../utils/biometrico-store'
 import { useRecargarExcels } from '../hooks/useRecargarExcels'
@@ -23,12 +23,23 @@ const readJSON = k => { try { return JSON.parse(localStorage.getItem(k)) || {} }
 
 export function CarpetasExcelPanel({ cfg, groups, people }) {
   const [conectadas, setConectadas] = useState(null)   // Set de keys crudas
+  const [permisos, setPermisos] = useState({})         // { key: 'granted'|'prompt'|'denied' }
   const [ocupado, setOcupado] = useState(null)
   const { recargar, cargando } = useRecargarExcels({ cfg, people })
 
   const refrescar = useCallback(async () => {
     if (!soportaCarpetas) { setConectadas(new Set()); return }
-    try { setConectadas(new Set((await listarCarpetas()).map(String))) } catch { setConectadas(new Set()) }
+    try {
+      const keys = (await listarCarpetas()).map(String)
+      setConectadas(new Set(keys))
+      // Estado de permiso por carpeta: sin esto una carpeta con permiso vencido
+      // se ve idéntica a una sana y solo se descubre al apretar Recargar.
+      const est = {}
+      for (const k of keys) {
+        try { est[k] = await estadoPermiso(await getHandle(k)) } catch { est[k] = 'none' }
+      }
+      setPermisos(est)
+    } catch { setConectadas(new Set()) }
   }, [])
   useEffect(() => { refrescar() }, [refrescar])
 
@@ -70,7 +81,7 @@ export function CarpetasExcelPanel({ cfg, groups, people }) {
     <div className="space-y-4" data-testid="panel-carpetas">
       <div className="flex items-center gap-3 flex-wrap">
         <button
-          onClick={() => recargar({ fiel: true })}
+          onClick={() => recargar({ fiel: true, conGesto: true })}
           className="btn-secondary text-sm"
           disabled={cargando}
           data-testid="btn-recargar-todas"
@@ -109,6 +120,12 @@ export function CarpetasExcelPanel({ cfg, groups, people }) {
                           <span className="max-w-[190px] truncate text-ink-100">{info?.carpeta || 'conectada'}</span>
                           {info?.ts && <span className="text-ink-400">{format(info.ts, 'dd MMM HH:mm')}</span>}
                         </span>
+                        {permisos[key] && permisos[key] !== 'granted' && (
+                          <span className="inline-flex items-center gap-1 rounded-lg border border-warn/40 bg-warn/10 px-2 py-1 text-[11px] text-warn" data-testid="badge-pide-permiso"
+                            title='Edge perdió el permiso de lectura. Aprieta "Recargar" y en la ventanita elige "Permitir en cada visita" para que no lo vuelva a pedir.'>
+                            <AlertTriangle size={11} /> pide permiso
+                          </span>
+                        )}
                         <button
                           onClick={() => accion(id, async () => {
                             const r = f.tipo === 'horarios'
@@ -120,7 +137,7 @@ export function CarpetasExcelPanel({ cfg, groups, people }) {
                           })}
                           disabled={ocupado === id}
                           className="btn-ghost text-xs"
-                          title="Volver a leer esta carpeta ahora (pide permiso si el navegador lo perdió)"
+                          title='Volver a leer esta carpeta ahora. Si Edge pide permiso, elige "Permitir en cada visita" y no lo vuelve a pedir.'
                         >
                           <RefreshCw size={12} className={ocupado === id ? 'animate-spin' : ''} /> Recargar
                         </button>
@@ -171,6 +188,10 @@ export function CarpetasExcelPanel({ cfg, groups, people }) {
       <p className="text-xs text-ink-400 flex items-start gap-2">
         <AlertTriangle size={13} className="mt-0.5 shrink-0" />
         Si un Excel está abierto en tu PC o OneDrive todavía no lo descargó, esa carpeta no borra nada por seguridad: se actualiza lo demás y te avisa.
+      </p>
+      <p className="text-xs text-ink-400 flex items-start gap-2">
+        <FolderCheck size={13} className="mt-0.5 shrink-0" />
+        Cuando Edge pregunte por una carpeta, elige <span className="text-ink-200 font-medium">"Permitir en cada visita"</span> — así "Recargar Excels" queda de un solo click, sin ventanitas, para siempre.
       </p>
     </div>
   )

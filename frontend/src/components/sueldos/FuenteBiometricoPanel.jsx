@@ -116,7 +116,10 @@ export function FuenteBiometricoPanel({
       {estado === 'requiere-permiso' && (
         <div className="rounded-xl border border-warn/40 bg-warn/5 p-3.5 flex items-center gap-3 text-sm">
           <AlertTriangle size={16} className="text-warn shrink-0" />
-          <span className="text-ink-200 flex-1">El navegador pide permiso de nuevo para leer la carpeta del biométrico.</span>
+          <span className="text-ink-200 flex-1">
+            El navegador pide permiso de nuevo para leer la carpeta del biométrico.
+            Tip: al aceptar, elegí <span className="font-medium text-ink-50">"Permitir en cada visita"</span> para no volver a verlo.
+          </span>
           <button onClick={() => carpeta.sincronizar({ conGesto: true })} className="btn-secondary text-xs whitespace-nowrap">
             Dar permiso y sincronizar
           </button>

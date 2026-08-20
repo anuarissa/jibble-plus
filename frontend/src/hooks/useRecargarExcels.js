@@ -27,7 +27,7 @@ export function useRecargarExcels({ cfg, people, onIrAConfiguracion }) {
   const datosRef = useRef({ cfg, people, onIrAConfiguracion })
   datosRef.current = { cfg, people, onIrAConfiguracion }
 
-  const recargar = useCallback(async ({ fiel = true, silencioso = false } = {}) => {
+  const recargar = useCallback(async ({ fiel = true, silencioso = false, conGesto = false } = {}) => {
     if (!soportaCarpetas) {
       if (!silencioso) toast.error('Este navegador no puede leer carpetas — usa Chrome o Edge.')
       return null
@@ -45,6 +45,7 @@ export function useRecargarExcels({ cfg, people, onIrAConfiguracion }) {
         acciones: { setTurnosSemana: c.setTurnosSemana, reemplazarTurnosDeLocal: c.reemplazarTurnosDeLocal },
         fiel,
         turnosActuales: c.turnos,
+        conGesto,
       })
       ultimaRef.current = Date.now()
 
@@ -76,10 +77,15 @@ export function useRecargarExcels({ cfg, people, onIrAConfiguracion }) {
           toast.warning('No se borró nada en un local por seguridad', { description: `${a.motivoAborto}. Se actualizó lo demás; revisa que OneDrive haya descargado los archivos y vuelve a recargar.`, duration: 9000 })
         }
         if (r.requierenPermiso.length) {
-          toast.warning(`${r.requierenPermiso.length} carpeta(s) piden permiso otra vez`, {
-            description: 'El navegador lo pide de a una: dale permiso a cada carpeta en Configuración.',
-            duration: 10000,
-            ...(irAConfig ? { action: { label: 'Ir a Configuración', onClick: irAConfig } } : {}),
+          // El navegador solo acepta UN permiso por click → se encadena acá
+          // mismo: cada click del toast resuelve una carpeta más. Eligiendo
+          // "Permitir en cada visita" en la ventanita de Edge, esa carpeta no
+          // vuelve a preguntar nunca y el botón queda de un solo click.
+          const n = r.requierenPermiso.length
+          toast.warning(`Falta permiso de ${n} carpeta${n > 1 ? 's' : ''}`, {
+            description: `Aprieta "Dar permiso" y en la ventanita de Edge elige "Permitir en cada visita" — así no te lo vuelve a pedir nunca.${n > 1 ? ` Repite hasta terminar (van de a una).` : ''}`,
+            duration: 15000,
+            action: { label: `Dar permiso${n > 1 ? ` (${n})` : ''}`, onClick: () => recargar({ fiel, conGesto: true }) },
           })
         }
         for (const e of r.errores) toast.error(`Error leyendo una carpeta: ${e.error}`)

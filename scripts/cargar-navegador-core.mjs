@@ -14,6 +14,8 @@ import { GROUP_IDS, resolveGroupId, esPersonaDummy, EMPLOYEE_OVERRIDES } from '.
 
 const CARPETA_SUELDOS_TUESDAY = 'C:/Users/anuar/OneDrive/Anuar/Tuesday/SUELDOS/SUELDOS 2026'
 const CARPETA_CUADERNOS_TUESDAY = 'C:/Users/anuar/OneDrive/TUESDAY AMERICA/CUADERNOS DE GERENTES/CUADERNOS GERENTES'
+const CARPETA_HORARIOS_SOS = 'C:/Users/anuar/OneDrive/SOS POLLO PRADO/CUADERNOS DE GERENTES/CUADERNOS GERENTES/CUADERNOS GERENTES 2026'
+const CARPETA_BIO_SOS = 'C:/Users/anuar/OneDrive/SOS POLLO PRADO/CUADERNOS DE GERENTES/CUADERNOS GERENTES/BIOMETRICO'
 const CARPETA_HORARIOS_HUPER = 'C:/Users/anuar/OneDrive/SBARRO HUPERMALL/1- CUADERNOS/5- CUADERNOS DE GERENTES/2026 CUADERNO GERENTES'
 const CARPETA_HORARIOS_AMERICA = 'C:/Users/anuar/OneDrive/SBARRO AMERICA/CUADERNOS DE GERENTES SA/PLANILLA SUPERVISORES SA/2026/HORARIOS 2026'
 const CARPETA_BIO_AMERICA = 'C:/Users/anuar/OneDrive/Anuar/SBARRO Cochabamba/FORMATOS CBBA/PAGOS SUELDOS DESDE 2017/PAGOS SUELDOS 2026'
@@ -46,6 +48,19 @@ export async function armarSeed(mesStr, raiz) {
     resumen.push(`TUESDAY: bio ${bioTue.archivo} (${bioTue.personas.length} personas) · turnos ${Object.keys(t.aplicarPorSemana).length} semanas de ${t.archivos.length} cuadernos`)
   } else {
     resumen.push(`TUESDAY: SIN export biométrico de ${mesStr} en ${CARPETA_SUELDOS_TUESDAY}`)
+  }
+
+  // ===== SOS POLLO: biométrico + horarios (solo-biométrico, como Tuesday) =====
+  const bioSos = bioDeCarpeta(CARPETA_BIO_SOS, mesStr)
+  if (bioSos) {
+    bioStore[GROUP_IDS.SOS_POLLO] = { [mesStr]: { marcas: bioSos.marcas, personas: bioSos.personas, ts: Date.now(), archivo: bioSos.archivo } }
+    const empSos = personasSinteticas(GROUP_IDS.SOS_POLLO, bioSos.personas)
+    const tS = turnosDeCarpeta(CARPETA_HORARIOS_SOS, empSos, GROUP_IDS.SOS_POLLO, isoWeekKey(ini))
+    mergeTurnos(tS.aplicarPorSemana)
+    resumen.push(`SOS POLLO: bio ${bioSos.archivo} (${bioSos.personas.length} personas) · turnos ${Object.keys(tS.aplicarPorSemana).length} semanas de ${tS.archivos.length} cuadernos`)
+    if (tS.noEncontrados.length) resumen.push(`SOS POLLO: nombres del cuaderno sin resolver: ${tS.noEncontrados.join(', ')}`)
+  } else {
+    resumen.push(`SOS POLLO: SIN export biométrico de ${mesStr} en ${CARPETA_BIO_SOS} — se omite (su gente sale del aparato)`)
   }
 
   // ===== SBARRO HUPER: biométrico (DATOS LOCALES) + horarios (su carpeta OneDrive) =====

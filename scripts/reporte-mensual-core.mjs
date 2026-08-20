@@ -63,7 +63,15 @@ const LOCALES = [
     ws: null, // sin Jibble: el personal y la asistencia salen del biométrico
     carpeta: 'C:/Users/anuar/OneDrive/TUESDAY AMERICA/CUADERNOS DE GERENTES/CUADERNOS GERENTES',
     bioCarpeta: 'C:/Users/anuar/OneDrive/Anuar/Tuesday/SUELDOS/SUELDOS 2026',
-    // Semana sin horario en el cuaderno → asumir la más cercana (regla de Anuar, solo Tuesday)
+    // Semana sin horario en el cuaderno → asumir la más cercana (regla de Anuar, locales solo-biométrico)
+    asumirSemanas: true,
+  },
+  {
+    nombre: 'SOS POLLO',
+    groupId: GROUP_IDS.SOS_POLLO,
+    ws: null, // sin Jibble: el personal y la asistencia salen del biométrico (como Tuesday)
+    carpeta: 'C:/Users/anuar/OneDrive/SOS POLLO PRADO/CUADERNOS DE GERENTES/CUADERNOS GERENTES/CUADERNOS GERENTES 2026',
+    bioCarpeta: 'C:/Users/anuar/OneDrive/SOS POLLO PRADO/CUADERNOS DE GERENTES/CUADERNOS GERENTES/BIOMETRICO',
     asumirSemanas: true,
   },
 ]

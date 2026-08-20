@@ -13,6 +13,18 @@ Tuesday usa sus carpetas de siempre (la app ya las conoce):
   - El biométrico de cada mes con este nombre: `07 JULIO BIOMETRICO TUESDAY.xls` (cambiando el mes).
     Se exporta del aparato con el mismo programa de siempre (el que genera "Reporte de Asistencia").
 
+## SOS POLLO tampoco va aquí
+
+SOS Pollo (solo biométrico, sin Jibble — como Tuesday) usa estas dos carpetas,
+elegidas por Anuar el 20-ago-2026 (cada una tiene su LEEME.txt adentro):
+
+- **Horarios**: `C:\Users\anuar\OneDrive\SOS POLLO PRADO\CUADERNOS DE GERENTES\CUADERNOS GERENTES\CUADERNOS GERENTES 2026\`
+- **Biométrico**: `C:\Users\anuar\OneDrive\SOS POLLO PRADO\CUADERNOS DE GERENTES\CUADERNOS GERENTES\BIOMETRICO\`
+  (el nombre del archivo debe llevar la palabra `BIOMETRICO`, ej. `08 AGOSTO BIOMETRICO SOS.xls`)
+
+En cuanto haya un export del aparato ahí, el personal de SOS aparece solo en la
+página (sale del propio aparato) y se publica al gerente igual que los demás.
+
 ## Sbarro Huper y Sbarro América
 
 ```text

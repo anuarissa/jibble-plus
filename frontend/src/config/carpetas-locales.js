@@ -20,8 +20,9 @@ export const RUTAS_SUGERIDAS = {
     biometrico: 'OneDrive\\Anuar\\SBARRO Cochabamba\\FORMATOS CBBA\\PAGOS SUELDOS DESDE 2017\\PAGOS SUELDOS 2026',
   },
   [GROUP_IDS.SOS_POLLO]: {
-    horarios: null,      // pendiente: Anuar avisará dónde queda
-    biometrico: null,
+    // Elegido por Anuar (20-ago-2026): dentro de la carpeta de cuadernos del local.
+    horarios: 'OneDrive\\SOS POLLO PRADO\\CUADERNOS DE GERENTES\\CUADERNOS GERENTES\\CUADERNOS GERENTES 2026',
+    biometrico: 'OneDrive\\SOS POLLO PRADO\\CUADERNOS DE GERENTES\\CUADERNOS GERENTES\\BIOMETRICO',
   },
 }
 

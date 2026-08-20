@@ -60,7 +60,7 @@ export default function Layout({ cfg }) {
         {excels.soportado && (
           <div className="p-3 border-t border-white/5">
             <button
-              onClick={() => excels.recargar({ fiel: true })}
+              onClick={() => excels.recargar({ fiel: true, conGesto: true })}
               disabled={excels.cargando}
               data-testid="btn-recargar-excels"
               title="Recargar Excels: vuelve a leer los horarios y biométricos de todos los locales y deja los datos igual a los archivos de ahora"

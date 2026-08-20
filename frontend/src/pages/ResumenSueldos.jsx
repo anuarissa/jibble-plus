@@ -127,8 +127,11 @@ export default function ResumenSueldos({ cfg }) {
   // el umbral de 208 h es mensual, en día/semana/rango se muestra el cálculo por hora.
   const modeloMensual = modo === 'mes' ? MODELO_MENSUAL_DEFAULT : null
 
-  // Local "solo biométrico" = toda su gente es sintética (no existe en Jibble), ej. Tuesday.
-  const esLocalBio = empleadosLocal.length > 0 && empleadosLocal.every(p => p.synthetic)
+  // Local "solo biométrico": los declarados en código (Tuesday, SOS — aunque aún
+  // no tengan datos: su fuente default debe ser Biométrico, no una App que no
+  // usan) o cualquiera cuya gente sea toda sintética (no existe en Jibble).
+  const esLocalBio = GRUPOS_SOLO_BIOMETRICO.has(grupoActivo)
+    || (empleadosLocal.length > 0 && empleadosLocal.every(p => p.synthetic))
   const fuenteEfectiva = fuente ?? (esLocalBio ? 'bio' : 'app')
 
   // Carpeta del biométrico del local. Al primer sync con datos: mostrar el local
