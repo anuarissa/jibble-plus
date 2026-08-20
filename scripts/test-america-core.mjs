@@ -137,6 +137,26 @@ export async function correr() {
     check('avisa que JHON aparece en dos puestos (W27/W28)', !!avisoJhon, total.warnings.filter(w => /puestos/.test(w)).join(' | '))
   }
 
+  // ── Unit: DOS empleados que se llaman EXACTAMENTE igual (caso real: dos
+  // NICOLAS en el aparato de SOS) — el índice ya no pisa al primero y el
+  // matcher lo declara ambiguo en vez de asignar al equivocado en silencio. ──
+  {
+    const { construirIndiceNombres, matchEmpleado } = await import('../frontend/src/utils/excel-turnos')
+    const dosNicolas = [
+      { id: 'bio:sos:9', fullName: 'Nicolas' },
+      { id: 'bio:sos:74', fullName: 'Nicolas' },
+      { id: 'carla', fullName: 'Carla' },
+    ]
+    const idx = construirIndiceNombres(dosNicolas)
+    const amb = new Map()
+    check('nombre duplicado exacto → NO se asigna solo', matchEmpleado(idx, 'NICOLAS', amb) === null)
+    check('el duplicado queda registrado como ambiguo con sus 2 candidatos',
+      amb.get('NICOLAS')?.length === 2 && amb.get('NICOLAS').every(c => c.fullName === 'Nicolas'),
+      JSON.stringify([...amb.keys()]))
+    check('un nombre único sigue matcheando normal', matchEmpleado(idx, 'CARLA')?.id === 'carla')
+    check('sin ambiguousOut tampoco asigna (devuelve null)', matchEmpleado(idx, 'NICOLAS') === null)
+  }
+
   // ── Unit sintético: nombres por ANCLA del merge — texto oculto bajo la celda
   // combinada (caso "Daniela Wolf") no se le regala a nadie si el ancla se vacía. ──
   {

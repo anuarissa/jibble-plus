@@ -372,9 +372,13 @@ export function TurnosTable({ group, empleados, schedules, cfg }) {
                       className="bg-bg-700 border border-white/10 rounded-lg text-xs px-2 py-1.5 text-ink-100"
                     >
                       <option value="" disabled>¿Cuál es?</option>
-                      {a.candidatos.map(c => (
-                        <option key={c.id} value={c.id}>{c.fullName}</option>
-                      ))}
+                      {a.candidatos.map(c => {
+                        // Dos candidatos con el MISMO nombre (ej. dos NICOLAS del
+                        // aparato): distinguirlos por su id del biométrico.
+                        const repetido = a.candidatos.filter(x => x.fullName === c.fullName).length > 1
+                        const idBio = repetido && String(c.id).startsWith('bio:') ? String(c.id).split(':').pop() : null
+                        return <option key={c.id} value={c.id}>{c.fullName}{idBio ? ` (aparato id ${idBio})` : ''}</option>
+                      })}
                       <option value="IGNORAR">— Ignorar siempre —</option>
                     </select>
                   </li>

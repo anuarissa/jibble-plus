@@ -571,17 +571,25 @@ function fusionarTurnos(prev, nuevo) {
 }
 
 // Match flexible: nombre exacto > primer nombre exacto > substring
-// ambiguousOut (Map opcional): si el nombre matchea a varios empleados por primer
-// nombre, se registra ahí y matchEmpleado devuelve null para evitar aplicar al
-// equivocado. El caller usa el map para generar un warning.
+// ambiguousOut (Map opcional): si el nombre matchea a varios empleados (por
+// primer nombre, o porque DOS empleados se llaman exactamente igual — caso real:
+// dos NICOLAS en el aparato de SOS), se registra ahí y matchEmpleado devuelve
+// null para no aplicar al equivocado. El caller usa el map para el panel/warning.
 export function matchEmpleado(empByNombre, raw, ambiguousOut = null) {
   const norm = normalizar(raw)
-  if (empByNombre.has(norm)) return empByNombre.get(norm)
+  // Una entrada del índice puede ser un ARRAY (varios empleados con el mismo
+  // nombre normalizado) — eso nunca se resuelve solo.
+  const resolver = v => {
+    if (!Array.isArray(v)) return v
+    if (ambiguousOut) ambiguousOut.set(raw, v)
+    return null
+  }
+  if (empByNombre.has(norm)) return resolver(empByNombre.get(norm))
   const firstWord = norm.split(' ')[0]
   // Match exacto por primer nombre — pero si hay varios, es ambiguo
   const matches = []
   for (const [k, v] of empByNombre) {
-    if (k.split(' ')[0] === firstWord) matches.push(v)
+    if (k.split(' ')[0] === firstWord) matches.push(...(Array.isArray(v) ? v : [v]))
   }
   if (matches.length === 1) return matches[0]
   if (matches.length > 1) {
@@ -591,7 +599,7 @@ export function matchEmpleado(empByNombre, raw, ambiguousOut = null) {
   // Substring (cuidado: solo si el Excel name es >= 4 chars)
   if (norm.length >= 4) {
     for (const [k, v] of empByNombre) {
-      if (k.includes(norm) || norm.includes(k.split(' ')[0])) return v
+      if (k.includes(norm) || norm.includes(k.split(' ')[0])) return resolver(v)
     }
   }
   // Typos: Levenshtein <= 2 sobre el primer nombre (ej "critian" → "cristian").
@@ -599,7 +607,7 @@ export function matchEmpleado(empByNombre, raw, ambiguousOut = null) {
   if (firstWord.length >= 4) {
     const fuzzy = []
     for (const [k, v] of empByNombre) {
-      if (levenshtein(firstWord, k.split(' ')[0]) <= 2) fuzzy.push(v)
+      if (levenshtein(firstWord, k.split(' ')[0]) <= 2) fuzzy.push(...(Array.isArray(v) ? v : [v]))
     }
     if (fuzzy.length === 1) return fuzzy[0]
     if (fuzzy.length > 1) {
@@ -611,8 +619,15 @@ export function matchEmpleado(empByNombre, raw, ambiguousOut = null) {
 }
 
 export function construirIndiceNombres(empleados) {
+  // Nombres normalizados repetidos (dos empleados que se llaman igual) se
+  // acumulan en un array: antes el segundo PISABA al primero y el matcher
+  // asignaba en silencio al que sobrevivía — turnos del NICOLAS equivocado.
   const m = new Map()
-  for (const e of empleados) m.set(normalizar(e.fullName), e)
+  for (const e of empleados) {
+    const k = normalizar(e.fullName)
+    if (!m.has(k)) m.set(k, e)
+    else m.set(k, [...(Array.isArray(m.get(k)) ? m.get(k) : [m.get(k)]), e])
+  }
   return m
 }
 
