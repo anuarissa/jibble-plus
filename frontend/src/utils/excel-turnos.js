@@ -596,10 +596,19 @@ export function matchEmpleado(empByNombre, raw, ambiguousOut = null) {
     if (ambiguousOut) ambiguousOut.set(raw, matches)
     return null
   }
-  // Substring (cuidado: solo si el Excel name es >= 4 chars)
+  // Substring (cuidado: solo si el Excel name es >= 4 chars). Como el resto de
+  // las reglas, exige candidato ÚNICO: antes devolvía el primero que "contenía"
+  // el nombre y con dos parecidos elegía al equivocado en silencio (caso real:
+  // "NICOLAS/MESAS" se lo llevaba Nicolas Bernardo y le inventaba turno doble).
   if (norm.length >= 4) {
+    const porSubstring = []
     for (const [k, v] of empByNombre) {
-      if (k.includes(norm) || norm.includes(k.split(' ')[0])) return resolver(v)
+      if (k.includes(norm) || norm.includes(k.split(' ')[0])) porSubstring.push(...(Array.isArray(v) ? v : [v]))
+    }
+    if (porSubstring.length === 1) return porSubstring[0]
+    if (porSubstring.length > 1) {
+      if (ambiguousOut) ambiguousOut.set(raw, porSubstring)
+      return null
     }
   }
   // Typos: Levenshtein <= 2 sobre el primer nombre (ej "critian" → "cristian").
@@ -612,6 +621,22 @@ export function matchEmpleado(empByNombre, raw, ambiguousOut = null) {
     if (fuzzy.length === 1) return fuzzy[0]
     if (fuzzy.length > 1) {
       if (ambiguousOut) ambiguousOut.set(raw, fuzzy)
+      return null
+    }
+  }
+  // Último recurso: el cuaderno suele escribir NOMBRE/PUESTO y a veces usa el
+  // APELLIDO (caso real SOS: "BERNARDO/DESPACHO" = Nicolas Bernardo). Se compara
+  // token a token contra el nombre completo; solo vale si el candidato es único.
+  const tokens = norm.split(/[/\s,]+/).filter(t => t.length >= 4)
+  if (tokens.length) {
+    const porToken = []
+    for (const [k, v] of empByNombre) {
+      const kt = k.split(/[/\s,]+/)
+      if (tokens.some(t => kt.includes(t))) porToken.push(...(Array.isArray(v) ? v : [v]))
+    }
+    if (porToken.length === 1) return porToken[0]
+    if (porToken.length > 1) {
+      if (ambiguousOut) ambiguousOut.set(raw, porToken)
       return null
     }
   }

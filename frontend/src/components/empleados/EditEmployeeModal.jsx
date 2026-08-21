@@ -24,6 +24,7 @@ export function EditEmployeeModal({ persona, groups, locales, cfg, onClose }) {
   const isHardForced = !!(hardOv.groupId || hardOv.schedule)
 
   // Estado local del form (se commitea al guardar)
+  const [nombre, setNombre] = useState(userOv.nombre ?? '')
   const [cargo, setCargo] = useState(userOv.cargo ?? hardOv.cargo ?? persona.position ?? '')
   const [groupId, setGroupId] = useState(userOv.groupId ?? hardOv.groupId ?? persona.groupId ?? '')
   const [tarifa, setTarifa] = useState(String(tarifaActual))
@@ -76,6 +77,8 @@ export function EditEmployeeModal({ persona, groups, locales, cfg, onClose }) {
     const expectedHoursPerWeek = horasDia * daysOfWeek.length
 
     const patch = {
+      // Nombre corregido a mano (vacío = vuelve al original del aparato/Jibble).
+      nombre: nombre.trim() || null,
       cargo: cargo.trim() || null,
       groupId: groupId || null,
       tarifa: parseFloat(tarifa) || 0,
@@ -137,6 +140,19 @@ export function EditEmployeeModal({ persona, groups, locales, cfg, onClose }) {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+          <Field
+            label="Nombre"
+            help={`Corrige el nombre si el aparato o Jibble lo registró distinto. Vacío = ${persona.fullName}.`}
+          >
+            <input
+              type="text"
+              value={nombre}
+              onChange={e => setNombre(e.target.value)}
+              placeholder={persona.fullName}
+              className="input"
+              data-testid="input-nombre-empleado"
+            />
+          </Field>
           <Field label="Cargo" icon={<Tag size={14} />}>
             <input type="text" value={cargo} onChange={e => setCargo(e.target.value)} placeholder="Ej: Cajero, Cocinero" className="input" />
           </Field>

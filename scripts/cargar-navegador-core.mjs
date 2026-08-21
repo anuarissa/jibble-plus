@@ -54,6 +54,9 @@ export async function armarSeed(mesStr, raiz) {
   const bioSos = bioDeCarpeta(CARPETA_BIO_SOS, mesStr)
   if (bioSos) {
     bioStore[GROUP_IDS.SOS_POLLO] = { [mesStr]: { marcas: bioSos.marcas, personas: bioSos.personas, ts: Date.now(), archivo: bioSos.archivo } }
+    // personasSinteticas ya aplica RENOMBRES_APARATO (config/employees.js): así
+    // "BERNARDO/DESPACHO" del cuaderno cae en Nicolas Bernardo y los dos
+    // "NICOLAS" del aparato dejan de confundirse entre sí.
     const empSos = personasSinteticas(GROUP_IDS.SOS_POLLO, bioSos.personas)
     const tS = turnosDeCarpeta(CARPETA_HORARIOS_SOS, empSos, GROUP_IDS.SOS_POLLO, isoWeekKey(ini))
     mergeTurnos(tS.aplicarPorSemana)

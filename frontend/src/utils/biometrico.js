@@ -11,6 +11,7 @@
 
 import * as XLSX from 'xlsx-js-style'
 import { normalizarNombre, matchEmpleado, construirIndiceNombres } from './excel-turnos'
+import { nombreDeAparato } from '../config/employees'
 
 const aMin = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m }
 
@@ -164,19 +165,24 @@ export function parseBiometricoWorkbook(wb, opts = {}) {
 export const personaSinteticaId = (groupId, idBio) => `bio:${groupId}:${idBio}`
 
 // Personas sintéticas con el shape que espera la app (useJibble / Empleados / Sueldos).
+// El nombre sale del aparato salvo que esté corregido en RENOMBRES_APARATO
+// (config/employees.js) — así la web y el CLI muestran lo mismo.
 export function personasSinteticas(groupId, personasBio) {
-  return (personasBio || []).map(p => ({
-    id: personaSinteticaId(groupId, p.idBio),
-    fullName: titulo(p.nombre),
-    firstName: titulo(p.nombre).split(' ')[0],
-    lastName: '',
-    position: '',
-    groupId,
-    email: null,
-    avatarUrl: null,
-    synthetic: true,
-    idBio: p.idBio,
-  }))
+  return (personasBio || []).map(p => {
+    const nombre = titulo(nombreDeAparato(groupId, p.idBio, p.nombre))
+    return {
+      id: personaSinteticaId(groupId, p.idBio),
+      fullName: nombre,
+      firstName: nombre.split(' ')[0],
+      lastName: '',
+      position: '',
+      groupId,
+      email: null,
+      avatarUrl: null,
+      synthetic: true,
+      idBio: p.idBio,
+    }
+  })
 }
 
 // Resuelve idBio → personId:

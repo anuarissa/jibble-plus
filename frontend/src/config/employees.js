@@ -186,6 +186,27 @@ export const ALIAS_TURNOS_FIJOS = {
     anuar: 'IGNORAR',                                        // el dueño no entra a planilla
     fabiola: '93a65596-276e-4b8b-93bd-56d0017621ca',         // Fabiola Rojas (la cajera AM del cuaderno; Nava también existe en Jibble → ambigüedad)
   },
+  [GROUP_IDS.SOS_POLLO]: {
+    // Puestos SIN persona fija en el cuaderno del gerente: esa gente se paga al
+    // día y no entra a la planilla (decisión de Anuar, 21-ago-2026).
+    'x/despacho': 'IGNORAR',
+    'x/mesas': 'IGNORAR',
+  },
+}
+
+// Gente del aparato biométrico registrada con un nombre que NO es el suyo (lo
+// tipeó el gerente en el reloj). Se corrige por código para que web y CLI
+// muestren lo mismo; el usuario puede pisarlo desde Empleados → Nombre
+// (personOverrides[personId].nombre gana sobre esto).
+// { [groupId]: { [idBio]: 'Nombre real' } }
+export const RENOMBRES_APARATO = {
+  [GROUP_IDS.SOS_POLLO]: {
+    9: 'Nicolas Bernardo',   // "NICOLAS" con 27 días — es Bernardo (confirmado por Anuar, 21-ago-2026)
+  },
+}
+
+export function nombreDeAparato(groupId, idBio, nombreOriginal) {
+  return RENOMBRES_APARATO[groupId]?.[idBio] || nombreOriginal
 }
 
 // Locales SIN cuenta Jibble: su personal existe SOLO en el biométrico físico

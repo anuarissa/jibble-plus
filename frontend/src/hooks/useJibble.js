@@ -97,10 +97,19 @@ export function useJibble(personOverrides = {}, locales = {}) {
   // sus marcas biométricas se mapean por alias a los personId reales.
   const peopleAll = useMemo(() => {
     if (!raw.peopleRaw) return null
+    // Nombre editado a mano (Empleados → Nombre). Imprescindible con la gente
+    // del aparato biométrico: ahí el nombre viene como lo tipeó el gerente en el
+    // reloj y a veces no es el real (caso SOS: "NICOLAS" id 9 = Nicolas
+    // Bernardo). El id NO cambia, así que tarifas y aprobaciones se conservan.
+    const conNombre = p => {
+      const nombre = personOverrides[p.id]?.nombre
+      if (!nombre) return p
+      return { ...p, fullName: nombre, firstName: nombre.split(' ')[0] }
+    }
     const jibblePeople = raw.peopleRaw
       .filter(p => !(EMPLOYEE_HARDCODED_SKIP(p.id))) // el Owner se filtra siempre
       .filter(p => !esPersonaDummy(p.fullName)) // cuentas dummy del local (ej. "Sbarro Huper")
-      .map(p => ({
+      .map(p => conNombre({
         ...p,
         // __ws = workspace de origen (lo etiqueta el backend al fusionar cuentas).
         // fullName: para la regla de la cuenta A (sin grupo → América u Oficinas).
@@ -111,7 +120,7 @@ export function useJibble(personOverrides = {}, locales = {}) {
     const gruposConGente = new Set(jibblePeople.map(p => p.groupId))
     const bio = readBio()
     const sinteticos = []
-    const conCargo = p => ({
+    const conCargo = p => conNombre({
       ...p,
       position: resolveCargo(p.id, '') || personOverrides[p.id]?.cargo || '',
       hidden: !!personOverrides[p.id]?.hidden,
