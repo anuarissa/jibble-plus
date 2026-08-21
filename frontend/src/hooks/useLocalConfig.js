@@ -21,9 +21,9 @@ const DEFAULT_CONFIG = {
   locales: {}, // { [groupId]: { name, color, emoji } }
   settings: {
     toleranciaMinutos: 0,        // Anuar: tolerancia 0 (1 min tarde ya cuenta)
-    // NOTA: la regla de multa es escalonada y vive hardcoded en utils/lateness.js
-    //   1-10 min → 10 Bs (fijo)
-    //   11+ min  → 10 Bs + 20 Bs por cada bloque de 10 min iniciado
+    // NOTA: la escala de descuentos vive hardcoded en utils/lateness.js y stats.js
+    //   tardanza: 1-10 min = 10 Bs · 11-20 = 20 Bs · 21+ = 30 Bs (tope)
+    //   no-registro 40 Bs · falta 110 Bs (regla Anuar 21-ago-2026)
     // Las claves multaPorBloque/bloqueMinutos quedan en localStorage por compatibilidad
     // con instalaciones viejas, pero ya no se usan.
     multaPorBloque: 10,

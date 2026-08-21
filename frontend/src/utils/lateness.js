@@ -1,28 +1,30 @@
 // Detección y multa de tardanzas — Bolivianos.
-// Regla Anuar: tolerancia 0 min (1 min ya es tarde). Multa ESCALONADA:
-//   - 1-10 min tarde    → 10 Bs (franja base, fija)
-//   - 11+ min tarde     → 10 Bs + 20 Bs por cada bloque de 10 min iniciado después de los 10
+// Regla Anuar (21-ago-2026, aplica a TODOS los locales): tolerancia 0 min
+// (1 min ya es tarde). Multa por franjas con TOPE:
+//   - 1-10 min tarde  → 10 Bs
+//   - 11-20 min tarde → 20 Bs
+//   - 21+ min tarde   → 30 Bs (tope: no crece más)
 //
 // Ejemplos:
 //   0 min  → 0 Bs   (puntual)
-//   1 min  → 10 Bs  (franja base)
-//   10 min → 10 Bs  (franja base)
-//   11 min → 30 Bs  (10 base + 20 por bloque 11-20)
-//   20 min → 30 Bs  (10 base + 20 por bloque 11-20)
-//   21 min → 50 Bs  (10 base + 20 + 20 por bloque 21-30)
-//   30 min → 50 Bs
-//   31 min → 70 Bs  (10 base + 20 + 20 + 20 por bloque 31-40)
+//   1 min  → 10 Bs
+//   10 min → 10 Bs
+//   11 min → 20 Bs
+//   20 min → 20 Bs
+//   21 min → 30 Bs
+//   60 min → 30 Bs  (tope)
+// (>180 min no se cobra — eso se filtra fuera de acá: casi siempre es horario
+//  mal cargado y el día sale en rojo para revisar el Excel.)
 
-export const FINE_BASE = 10            // Bs por la franja 1-10 min
-export const FINE_BASE_LIMIT = 10      // tope (min) de la franja base
-export const FINE_EXTRA_PER_BLOCK = 20 // Bs por cada bloque adicional
-export const FINE_EXTRA_BLOCK = 10     // tamaño (min) de cada bloque adicional
+export const MULTA_FRANJAS = [
+  { hastaMin: 10, multa: 10 },
+  { hastaMin: 20, multa: 20 },
+  { hastaMin: Infinity, multa: 30 },   // tope
+]
 
 export function calcularMulta(minutosTarde) {
   if (!minutosTarde || minutosTarde <= 0) return 0
-  if (minutosTarde <= FINE_BASE_LIMIT) return FINE_BASE
-  const bloquesExtra = Math.ceil((minutosTarde - FINE_BASE_LIMIT) / FINE_EXTRA_BLOCK)
-  return FINE_BASE + bloquesExtra * FINE_EXTRA_PER_BLOCK
+  return MULTA_FRANJAS.find(f => minutosTarde <= f.hastaMin).multa
 }
 
 // Calcula minutos de retraso entre hora programada y hora real, en zona Bolivia.

@@ -419,7 +419,7 @@ ${filasTempranas.length ? `
 </table>` : ''}
 
 <h2><span class="num">4.</span> Retrasos y sus descuentos, día por día</h2>
-<p class="nota">Multa escalonada del local: 1–10 min = Bs 10 · cada bloque de 10 min adicional suma Bs 20. Retrasos de más de 3 h no se cobran (horario mal cargado — salen en rojo en la app).</p>
+<p class="nota">Multa del local: 1–10 min = Bs 10 · 11–20 = Bs 20 · 21+ = Bs 30 (tope). Retrasos de más de 3 h no se cobran (horario mal cargado — salen en rojo en la app).</p>
 ${filasRetraso.length ? `<table>
   <tr><th>Empleado</th><th>Día</th><th class="n">Entrada prog.</th><th class="n">Marcó</th><th class="n">Min tarde</th><th class="n">Multa</th></tr>
   ${filasRetraso.map(x => `<tr><td>${esc(x.nombre)}</td><td>${fmtDia(x.dia)}</td><td class="n">${esc(x.prog)}</td><td class="n">${esc(x.real)}</td><td class="n">${x.mins}</td><td class="n mal">−${bsF(x.multa)}</td></tr>`).join('')}
@@ -461,7 +461,7 @@ programada) + extras que apruebes a 13,75 − retrasos (arriba, día por día) �
 </div>
 
 <p class="firma">Cuadre generado automáticamente · reglas: sueldo ref. Bs 3.300 / 208 h/mes (Bs 15,865/h) · extras aprobadas Bs 13,75/h (al aprobar se pagan TODOS los minutos; se puede aprobar parcial) ·
-llegar antes no suma (≥30 min antes = revisar) · multa retraso escalonada · no-registro Bs 20/día · ${esc(mesStr)}</p>
+llegar antes no suma (≥30 min antes = revisar) · multa retraso 10/20/30 con tope · no-registro Bs 40/día · falta Bs 110/día · ${esc(mesStr)}</p>
 
 </main></body></html>`
 }

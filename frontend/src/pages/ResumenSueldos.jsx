@@ -21,9 +21,9 @@ import { Skeleton } from '../components/ui/Skeleton'
 import { FuenteBiometricoPanel } from '../components/sueldos/FuenteBiometricoPanel'
 import { resumenSueldos } from '../utils/resumen-sueldos'
 import { MODELO_MENSUAL_DEFAULT } from '../utils/payroll'
-import { celdaToRow, comentarioAnomalia } from '../utils/stats'
+import { celdaToRow, comentarioAnomalia, claveCondonacionFalta } from '../utils/stats'
 import { resolverPersonasBio, marcasToAttendance, aliasKeyBio } from '../utils/biometrico'
-import { exportLiquidacionEmpleado, multaDelDia, noRegistroDelDia } from '../utils/liquidacion-empleado'
+import { exportLiquidacionEmpleado, multaDelDia, noRegistroDelDia, faltaDelDia } from '../utils/liquidacion-empleado'
 import { marcasEnRango, personasBioDeLocal, mesesConDatos, localesConBio, useBioVersion } from '../utils/biometrico-store'
 import { getAliases, setAlias } from '../utils/carpeta-horarios'
 import { asumirSemanasFaltantes, isoWeekKey, lunesDeSemana } from '../utils/turnos'
@@ -615,6 +615,8 @@ export default function ResumenSueldos({ cfg }) {
                         modeloMensual={modeloMensual}
                         aprobarExtra={cfg.aprobarExtra}
                         revertirExtra={cfg.revertirExtra}
+                        condonarFalta={cfg.condonar}
+                        revertirCondonacionFalta={cfg.revertirCondonacion}
                       />
                     )
                   })}
@@ -629,7 +631,9 @@ export default function ResumenSueldos({ cfg }) {
                     <td className="text-right py-3">{t.minTarde}</td>
                     <td className="text-right py-3 text-accent-400">{t.minExtra || '—'}</td>
                     <td className="text-right py-3 text-bad">{t.multaBs > 0 ? `−${formatBs(t.multaBs)}` : '—'}</td>
-                    <td className="text-right py-3 font-bold text-bad">{t.faltas || '—'}</td>
+                    <td className="text-right py-3 font-bold text-bad">
+                      {t.faltas ? <>{t.faltas}{t.descuentoFaltas > 0 && <div className="text-xs font-medium">−{formatBs(t.descuentoFaltas)}</div>}</> : '—'}
+                    </td>
                     <td className="text-right py-3 text-bad">{t.descuentoNoRegistro > 0 ? `−${formatBs(t.descuentoNoRegistro)}` : '—'}</td>
                     <td className="text-right py-3 text-accent-400">{t.horasExtra > 0 ? formatHoras(t.horasExtra) : '—'}</td>
                     <td className="text-right py-3 font-display">{formatBs(t.bruto)}</td>
@@ -741,7 +745,7 @@ function CeldaExtra({ c, aprobarExtra, revertirExtra }) {
   return <span className="text-ink-400">—</span>
 }
 
-function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, modeloMensual, aprobarExtra, revertirExtra }) {
+function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, modeloMensual, aprobarExtra, revertirExtra, condonarFalta, revertirCondonacionFalta }) {
   // Filtro del detalle diario: qué días generaron cada descuento y por qué.
   // El componente NO se desmonta al colapsar → resetear al cerrar.
   const [filtroDetalle, setFiltroDetalle] = useState('todos')
@@ -753,7 +757,7 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, m
     { id: 'todos', label: `Todos · ${cellsVisibles.length} días`, test: () => true },
     { id: 'retrasos', label: `Retrasos · −Bs ${bsRetrasos}`, test: c => c.mins > 0 && c.mins <= 180 },
     { id: 'noRegistro', label: `No marcó · −Bs ${f.descuentoNoRegistro}`, test: c => c.registroIncompleto },
-    { id: 'faltas', label: `Faltas`, test: c => c.falto },
+    { id: 'faltas', label: f.descuentoFaltas > 0 ? `Faltas · −Bs ${f.descuentoFaltas}` : `Faltas`, test: c => c.falto },
     { id: 'extras', label: `Extras`, test: c => !c.anomalia && (c.extraAprobable > 0 || c.minExtraComputado > 0) },
     { id: 'tempranas', label: `Llegó antes`, test: c => !c.anomalia && c.revisarTemprano },
     { id: 'revisar', label: `A revisar`, test: c => c.anomalia },
@@ -808,7 +812,10 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, m
         <td className="text-right py-3">{f.multaBs > 0 ? <span className="text-bad">−{formatBs(f.multaBs)}</span> : <span className="text-ink-400">—</span>}</td>
         <td className="text-right py-3">
           {f.faltas.length > 0
-            ? <span className="font-bold text-bad" title={f.faltas.map(x => formatFecha(x.dayStr)).join(', ')}>{f.faltas.length}</span>
+            ? <span className="font-bold text-bad" title={`${f.faltas.map(x => formatFecha(x.dayStr) + (x.condonada ? ' (justificada)' : '')).join(', ')} — Bs 110 por falta no justificada`}>
+                {f.faltas.length}
+                {f.descuentoFaltas > 0 && <div className="text-xs font-medium">−{formatBs(f.descuentoFaltas)}</div>}
+              </span>
             : <span className="text-ink-400">—</span>}
         </td>
         <td className="text-right py-3">
@@ -830,8 +837,9 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, m
               <div className="mb-3 rounded-lg border border-bad/30 bg-bad/5 px-3 py-2 text-sm">
                 <span className="font-semibold text-bad">No vino ({f.faltas.length}):</span>{' '}
                 <span className="text-ink-200">
-                  {f.faltas.map(x => `${formatFecha(x.dayStr)} (programado ${x.programadoStart}–${x.programadoEnd})`).join(' · ')}
+                  {f.faltas.map(x => `${formatFecha(x.dayStr)} (programado ${x.programadoStart}–${x.programadoEnd}${x.condonada ? ' · justificada' : ''})`).join(' · ')}
                 </span>
+                {f.descuentoFaltas > 0 && <span className="text-bad font-medium"> — descuento −Bs {f.descuentoFaltas} ({f.diasFalta} × 110)</span>}
               </div>
             )}
             {/* Filtros: qué días exactos generaron cada descuento / señal */}
@@ -906,9 +914,13 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, m
                             ? (c.horasPagables > 0 ? `${c.horasPagables.toFixed(2)}*` : '—')
                             : (row['Horas trabajadas'] || '—')}
                         </td>
-                        <td className="py-1.5 text-right whitespace-nowrap" title={multaDelDia(c) + noRegistroDelDia(c) > 0 ? `${multaDelDia(c) ? `Retraso de ${c.mins} min: −Bs ${multaDelDia(c)}` : ''}${multaDelDia(c) && noRegistroDelDia(c) ? ' · ' : ''}${noRegistroDelDia(c) ? `No marcó entrada o salida: −Bs ${noRegistroDelDia(c)}` : ''}` : undefined}>
-                          {multaDelDia(c) + noRegistroDelDia(c) > 0
-                            ? <span className="text-bad font-medium">−Bs {multaDelDia(c) + noRegistroDelDia(c)}</span>
+                        <td className="py-1.5 text-right whitespace-nowrap" title={multaDelDia(c) + noRegistroDelDia(c) + faltaDelDia(c) > 0 ? [
+                          multaDelDia(c) ? `Retraso de ${c.mins} min: −Bs ${multaDelDia(c)}` : null,
+                          noRegistroDelDia(c) ? `No marcó entrada o salida: −Bs ${noRegistroDelDia(c)}` : null,
+                          faltaDelDia(c) ? `Faltó: −Bs ${faltaDelDia(c)}` : null,
+                        ].filter(Boolean).join(' · ') : undefined}>
+                          {multaDelDia(c) + noRegistroDelDia(c) + faltaDelDia(c) > 0
+                            ? <span className="text-bad font-medium">−Bs {multaDelDia(c) + noRegistroDelDia(c) + faltaDelDia(c)}</span>
                             : <span className="text-ink-400">—</span>}
                         </td>
                         <td className={`py-1.5 pl-3 ${enRojo || c.sinHorario ? 'text-bad' : 'text-ink-400'}`}>
@@ -916,7 +928,32 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, m
                             c.revisarTemprano ? `Llegó ${c.minAntes} min antes de su horario (no se pagan — revisar).` : null,
                             comentario,
                             !comentario && c.condonada ? 'Tardanza condonada — no se cobra multa.' : null,
+                            c.falto && c.faltaCondonada ? 'Falta justificada — no se descuenta.' : null,
                           ].filter(Boolean).join(' ')}
+                          {c.falto && !c.faltaCondonada && faltaDelDia(c) > 0 && condonarFalta && (
+                            <button
+                              onClick={e => {
+                                e.stopPropagation()
+                                const motivo = prompt(`¿Por qué se justifica la falta del ${formatFecha(c.dayStr)}? (vacaciones, permiso, baja médica…)`)
+                                if (motivo == null) return
+                                condonarFalta(claveCondonacionFalta(f.personId, c.dayStr), motivo.trim())
+                              }}
+                              className="ml-2 text-[10px] px-1.5 py-0.5 rounded border border-white/15 text-ink-300 hover:text-ink-50 hover:border-white/30 transition-colors"
+                              title="Marcar como falta justificada (vacaciones/permiso): no se descuentan los Bs 110"
+                              data-testid="btn-condonar-falta"
+                            >
+                              Justificar
+                            </button>
+                          )}
+                          {c.falto && c.faltaCondonada && revertirCondonacionFalta && (
+                            <button
+                              onClick={e => { e.stopPropagation(); revertirCondonacionFalta(claveCondonacionFalta(f.personId, c.dayStr)) }}
+                              className="ml-2 text-[10px] px-1.5 py-0.5 rounded border border-white/15 text-ink-400 hover:text-bad hover:border-bad/40 transition-colors"
+                              title="Quitar la justificación: vuelve a descontar Bs 110"
+                            >
+                              Quitar justificación
+                            </button>
+                          )}
                         </td>
                       </tr>
                     )

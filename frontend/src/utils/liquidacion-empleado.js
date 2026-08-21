@@ -3,8 +3,8 @@
 // Pensado para mostrárselo al trabajador cuando tenga dudas de un descuento.
 
 import { exportExcelMultiSheet } from './export'
-import { celdaToRow, comentarioAnomalia, MULTA_NO_REGISTRO } from './stats'
-import { calcularMulta } from './lateness'
+import { celdaToRow, comentarioAnomalia, MULTA_NO_REGISTRO, MULTA_FALTA } from './stats'
+import { calcularMulta, MULTA_FRANJAS } from './lateness'
 import { formatFecha } from './format'
 
 // Multa por retraso de UN día (misma regla que la planilla: 1–180 min, condonada = 0;
@@ -18,6 +18,23 @@ export function multaDelDia(c) {
 export function noRegistroDelDia(c) {
   return c?.registroIncompleto ? MULTA_NO_REGISTRO : 0
 }
+
+// Descuento por faltar de UN día (solo días ya pasados; condonada = justificada).
+// hoy en hora LOCAL (Bolivia) — toISOString daría el día UTC y correría el corte.
+export function faltaDelDia(c) {
+  if (!c?.falto || c.faltaCondonada) return 0
+  const d = new Date()
+  const hoyStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return c.dayStr < hoyStr ? MULTA_FALTA : 0
+}
+
+// Texto de la escala para pantallas y Excel (fuente única).
+export const TARIFA_MULTA_LABEL = MULTA_FRANJAS
+  .map((f, i, arr) => {
+    const desde = i === 0 ? 1 : arr[i - 1].hastaMin + 1
+    return f.hastaMin === Infinity ? `${desde}+ min: Bs ${f.multa} (tope)` : `${desde}-${f.hastaMin} min: Bs ${f.multa}`
+  })
+  .join(' · ')
 
 const r2 = n => Math.round((n || 0) * 100) / 100
 
@@ -44,13 +61,14 @@ export function exportLiquidacionEmpleado({ fila, nombreLocal, rangoLabel, fuent
     { Campo: '— DESCUENTOS (ver detalle día a día) —', Valor: '' },
     { Campo: `Retrasos: ${f.diasTarde} día(s) · ${f.minTarde} min en total`, Valor: -r2(f.multaBs) },
     { Campo: `No marcó entrada o salida: ${f.diasNoRegistro} día(s) × Bs ${MULTA_NO_REGISTRO}`, Valor: -r2(f.descuentoNoRegistro) },
-    { Campo: `Faltas: ${f.faltas.length} día(s)${f.faltas.length ? ' → ' + f.faltas.map(x => formatFecha(x.dayStr)).join(', ') : ''}`, Valor: f.faltas.length ? '(no se pagan esos días)' : '—' },
+    { Campo: `Faltas: ${f.diasFalta || 0} día(s) × Bs ${MULTA_FALTA}${f.faltas.length ? ' → ' + f.faltas.map(x => formatFecha(x.dayStr) + (x.condonada ? ' (justificada)' : '')).join(', ') : ''}`, Valor: -r2(f.descuentoFaltas || 0) },
     { Campo: '— TOTAL —', Valor: '' },
     { Campo: 'TOTAL A PAGAR (Bs)', Valor: r2(f.totalAPagar) },
     ...(f.minExtraPendiente > 0 ? [{ Campo: `Pendiente: ${f.minExtraPendiente} min extra POR APROBAR (no incluidos)`, Valor: '' }] : []),
     { Campo: '— REGLAS DEL LOCAL —', Valor: '' },
-    { Campo: 'Multa por retraso', Valor: '1–10 min: Bs 10 · después +Bs 20 por cada 10 min' },
+    { Campo: 'Multa por retraso', Valor: TARIFA_MULTA_LABEL },
     { Campo: 'No marcar entrada o salida', Valor: `Bs ${MULTA_NO_REGISTRO} por día` },
+    { Campo: 'Faltar al trabajo (día programado sin marcar)', Valor: `Bs ${MULTA_FALTA} por día, además de no pagarse esas horas (falta justificada no descuenta)` },
     { Campo: 'Llegar antes del horario', Valor: 'No suma horas (la ventana arranca a la hora programada)' },
     { Campo: 'Quedarse después de la salida', Valor: 'Solo se paga lo que el encargado apruebe (todo o una parte); pasada la medianoche cuenta igual' },
     ...(modeloMensual ? [{ Campo: 'Mes completo', Valor: `Bs ${modeloMensual.sueldoCompleto} al cubrir ${modeloMensual.horasCompletas} h; proporcional si no llega; sobre ${modeloMensual.horasCompletas} h a Bs ${modeloMensual.tarifaExtra}/h` }] : []),
@@ -77,7 +95,12 @@ export function exportLiquidacionEmpleado({ fila, nombreLocal, rangoLabel, fuent
         'Por aprobar (min)': (!c.anomalia && (c.extraAprobable || 0) - (c.minExtraComputado || 0) > 0) ? (c.extraAprobable - (c.minExtraComputado || 0)) : '',
         'Horas pagadas': c.falto ? 0 : r2(c.anomalia ? (c.horasPagables || 0) : (c.horas || 0)),
         'No-registro (Bs)': noReg ? -noReg : '',
-        Comentario: comentarioAnomalia(c) || (c.condonada ? 'Retraso condonado — no se cobra.' : ''),
+        'Falta (Bs)': faltaDelDia(c) ? -faltaDelDia(c) : '',
+        Comentario: [
+          comentarioAnomalia(c),
+          !comentarioAnomalia(c) && c.condonada ? 'Retraso condonado — no se cobra.' : null,
+          c.falto && c.faltaCondonada ? 'Falta justificada — no se descuenta.' : null,
+        ].filter(Boolean).join(' '),
         _rojo: !!(c.falto || c.anomalia),
       }
     })
@@ -91,6 +114,7 @@ export function exportLiquidacionEmpleado({ fila, nombreLocal, rangoLabel, fuent
     'Por aprobar (min)': f.minExtraPendiente || '',
     'Horas pagadas': r2(f.horasPagables),
     'No-registro (Bs)': f.descuentoNoRegistro ? -r2(f.descuentoNoRegistro) : '',
+    'Falta (Bs)': f.descuentoFaltas ? -r2(f.descuentoFaltas) : '',
     Comentario: `Total a pagar: Bs ${r2(f.totalAPagar)}`,
     _rojo: false,
   })
@@ -123,6 +147,7 @@ export function exportLiquidacionEmpleado({ fila, nombreLocal, rangoLabel, fuent
         { label: 'Por aprobar (min)', accessor: 'Por aprobar (min)', width: 15, numFmt: '0' },
         { label: 'Horas pagadas', accessor: 'Horas pagadas', width: 13, numFmt: '0.00' },
         { label: 'No-registro (Bs)', accessor: 'No-registro (Bs)', width: 14, numFmt: '"Bs" #,##0.00' },
+        { label: 'Falta (Bs)', accessor: 'Falta (Bs)', width: 11, numFmt: '"Bs" #,##0.00' },
         { label: 'Comentario', accessor: 'Comentario', width: 60 },
       ],
       rows: diaRows,

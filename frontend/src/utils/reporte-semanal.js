@@ -147,7 +147,7 @@ export function descargarReporteSemanal({
       })
 
   // === HOJA 4: PLANILLA ===
-  const TARIFA_MULTA_LABEL = '10 Bs hasta 10 min · +20 Bs cada 10 min adicional'
+  const TARIFA_MULTA_LABEL = '1-10 min: Bs 10 · 11-20 min: Bs 20 · 21+ min: Bs 30 (tope)'
   const planillaRows = planilla.filas.map(f => ({
     Empleado: f.fullName,
     Cargo: f.position || '',

@@ -221,7 +221,7 @@ export function descargarReporteMensual({
       })
 
   // === HOJA PLANILLA MENSUAL ===
-  const TARIFA_MULTA_LABEL = '10 Bs hasta 10 min · +20 Bs cada 10 min adicional'
+  const TARIFA_MULTA_LABEL = '1-10 min: Bs 10 · 11-20 min: Bs 20 · 21+ min: Bs 30 (tope)'
   const planillaSheetRows = planillaFilas.map(f => ({
     Empleado: f.fullName,
     Cargo: f.position || '',

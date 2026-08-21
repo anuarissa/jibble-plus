@@ -93,12 +93,15 @@ export function planillaEmpleado(empleado, fichajes, tardanzas, config = {}) {
     ? Math.max(0, config.minTardeDia)
     : tardanzasActivas.reduce((s, t) => s + (t.minutosTarde || 0), 0)
 
-  // Descuento por no-registro (20 Bs × día incompleto), categoría separada, se ACUMULA.
+  // Descuento por no-registro (40 Bs × día incompleto), categoría separada, se ACUMULA.
   const descuentoNoRegistro = Math.max(0, config.descuentoNoRegistro || 0)
   const diasNoRegistro = config.diasNoRegistro || 0
+  // Descuento por faltas (110 Bs × día programado sin ningún fichaje, salvo condonada).
+  const descuentoFaltas = Math.max(0, config.descuentoFaltas || 0)
+  const diasFalta = config.diasFalta || 0
 
   const bruto = baseTarifa + extraTarifa
-  const totalAPagar = Math.max(0, bruto - descuentoTardanza - descuentoNoRegistro)
+  const totalAPagar = Math.max(0, bruto - descuentoTardanza - descuentoNoRegistro - descuentoFaltas)
 
   return {
     personId: empleado.id,
@@ -114,6 +117,8 @@ export function planillaEmpleado(empleado, fichajes, tardanzas, config = {}) {
     descuentoTardanza,
     descuentoNoRegistro,
     diasNoRegistro,
+    descuentoFaltas,
+    diasFalta,
     minutosTardeTotales,
     totalAPagar: round(totalAPagar, 2),
     cantidadTardanzas: tardanzas.length,
@@ -134,6 +139,8 @@ export function planillaLocal(empleados, fichajesPorPersona, tardanzasPorPersona
   const pagablesPP = config.horasPagablesPorPersona || null
   const descNoRegPP = config.descuentoNoRegistroPorPersona || null
   const diasNoRegPP = config.diasNoRegistroPorPersona || null
+  const descFaltasPP = config.descuentoFaltasPorPersona || null
+  const diasFaltaPP = config.diasFaltaPorPersona || null
   const multaPP = config.multaBsPorPersona || null
   const minTardePP = config.minTardePorPersona || null
   const filas = empleados.map(emp => {
@@ -142,6 +149,8 @@ export function planillaLocal(empleados, fichajesPorPersona, tardanzasPorPersona
     if (pagablesPP) cfg.horasPagablesDia = pagablesPP[emp.id] ?? 0
     if (descNoRegPP) cfg.descuentoNoRegistro = descNoRegPP[emp.id] ?? 0
     if (diasNoRegPP) cfg.diasNoRegistro = diasNoRegPP[emp.id] ?? 0
+    if (descFaltasPP) cfg.descuentoFaltas = descFaltasPP[emp.id] ?? 0
+    if (diasFaltaPP) cfg.diasFalta = diasFaltaPP[emp.id] ?? 0
     if (multaPP) cfg.multaBsDia = multaPP[emp.id] ?? 0
     if (minTardePP) cfg.minTardeDia = minTardePP[emp.id] ?? 0
     return planillaEmpleado(emp, fichajesPorPersona[emp.id] || [], tardanzasPorPersona[emp.id] || [], cfg)
@@ -152,8 +161,9 @@ export function planillaLocal(empleados, fichajesPorPersona, tardanzasPorPersona
     bruto: acc.bruto + f.bruto,
     descuentoTardanza: acc.descuentoTardanza + f.descuentoTardanza,
     descuentoNoRegistro: acc.descuentoNoRegistro + f.descuentoNoRegistro,
+    descuentoFaltas: acc.descuentoFaltas + f.descuentoFaltas,
     totalAPagar: acc.totalAPagar + f.totalAPagar,
-  }), { horasNormales: 0, horasExtra: 0, bruto: 0, descuentoTardanza: 0, descuentoNoRegistro: 0, totalAPagar: 0 })
+  }), { horasNormales: 0, horasExtra: 0, bruto: 0, descuentoTardanza: 0, descuentoNoRegistro: 0, descuentoFaltas: 0, totalAPagar: 0 })
 
   return {
     filas,
@@ -163,6 +173,7 @@ export function planillaLocal(empleados, fichajesPorPersona, tardanzasPorPersona
       bruto: round(totales.bruto, 2),
       descuentoTardanza: round(totales.descuentoTardanza, 2),
       descuentoNoRegistro: round(totales.descuentoNoRegistro, 2),
+      descuentoFaltas: round(totales.descuentoFaltas, 2),
       totalAPagar: round(totales.totalAPagar, 2),
     },
   }

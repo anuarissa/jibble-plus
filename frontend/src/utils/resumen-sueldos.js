@@ -73,6 +73,7 @@ export function resumenSueldos({
   const tardanzasPorPersona = groupByPerson(tardanzasRango)
 
   const horasExtraPorPersona = {}, horasPagablesPorPersona = {}, descuentoNoRegistroPorPersona = {}, diasNoRegistroPorPersona = {}
+  const descuentoFaltasPorPersona = {}, diasFaltaPorPersona = {}
   const multaBsPorPersona = {}, minTardePorPersona = {}
   const aggPorPersona = {}
   for (const emp of empleados) {
@@ -82,6 +83,8 @@ export function resumenSueldos({
     horasPagablesPorPersona[emp.id] = agg.horasPagables
     descuentoNoRegistroPorPersona[emp.id] = agg.descuentoNoRegistro
     diasNoRegistroPorPersona[emp.id] = agg.diasNoRegistro
+    descuentoFaltasPorPersona[emp.id] = agg.descuentoFaltas
+    diasFaltaPorPersona[emp.id] = agg.diasFalta
     multaBsPorPersona[emp.id] = agg.multaBs
     minTardePorPersona[emp.id] = agg.minTarde
   }
@@ -89,6 +92,7 @@ export function resumenSueldos({
   const planilla = planillaLocal(empleadosConTarifa, fichajesPorPersona, tardanzasPorPersona, {
     multiplicadorExtra: settings?.multiplicadorExtra,
     horasExtraPorPersona, horasPagablesPorPersona, descuentoNoRegistroPorPersona, diasNoRegistroPorPersona,
+    descuentoFaltasPorPersona, diasFaltaPorPersona,
     multaBsPorPersona, minTardePorPersona,
     modeloMensual,
   })
@@ -101,9 +105,10 @@ export function resumenSueldos({
     const pago = planillaPorPersona[emp.id] || {}
 
     // Faltas: programado sin fichaje, solo días YA pasados (hoy aún puede fichar).
+    // condonada = justificada (vacaciones/permiso): cuenta en la lista pero sin multa.
     const faltas = cells
       .filter(c => c.falto && c.dayStr < hoyStr)
-      .map(c => ({ dayStr: c.dayStr, programadoStart: c.programadoStart, programadoEnd: c.programadoEnd, horas: horasDeProgramado(c.programadoStart, c.programadoEnd) }))
+      .map(c => ({ dayStr: c.dayStr, programadoStart: c.programadoStart, programadoEnd: c.programadoEnd, horas: horasDeProgramado(c.programadoStart, c.programadoEnd), condonada: !!c.faltaCondonada }))
 
     // Días sin horario cargado (no evaluables) y días con datos a revisar.
     const diasSinHorario = cells.filter(c => c.sinHorario).length
@@ -145,6 +150,8 @@ export function resumenSueldos({
       minTarde: agg.minTarde,
       multaBs: round(agg.multaBs),
       faltas,
+      diasFalta: agg.diasFalta,
+      descuentoFaltas: round(agg.descuentoFaltas),
       diasNoRegistro: agg.diasNoRegistro,
       descuentoNoRegistro: round(agg.descuentoNoRegistro),
       horasExtra: round(agg.horasExtra),
@@ -182,6 +189,8 @@ export function resumenSueldos({
     minTarde: t.minTarde + f.minTarde,
     multaBs: t.multaBs + f.multaBs,
     faltas: t.faltas + f.faltas.length,
+    diasFalta: t.diasFalta + f.diasFalta,
+    descuentoFaltas: t.descuentoFaltas + f.descuentoFaltas,
     diasNoRegistro: t.diasNoRegistro + f.diasNoRegistro,
     descuentoNoRegistro: t.descuentoNoRegistro + f.descuentoNoRegistro,
     diasSinHorario: t.diasSinHorario + f.diasSinHorario,
@@ -192,7 +201,7 @@ export function resumenSueldos({
   }), {
     horasProgramadas: 0, horasTrabajadas: 0, horasPagables: 0, horasTotales: 0, horasNormales: 0,
     horasExtra: 0, minExtra: 0, minExtraPendiente: 0, diasExtraPendiente: 0, diasTemprano: 0,
-    diasTarde: 0, minTarde: 0, multaBs: 0, faltas: 0,
+    diasTarde: 0, minTarde: 0, multaBs: 0, faltas: 0, diasFalta: 0, descuentoFaltas: 0,
     diasNoRegistro: 0, descuentoNoRegistro: 0, diasSinHorario: 0, diasARevisar: 0,
     bruto: 0, descuentoTardanza: 0, totalAPagar: 0,
   })

@@ -53,11 +53,10 @@ Desde ahí, cada vez que se abre la pestaña los turnos se cargan solos.
 ## Reglas de tardanza y descuentos
 
 - Tolerancia: 0 minutos (1 min ya cuenta como tarde)
-- **Multa escalonada** (hardcodeada en `utils/lateness.js` → `calcularMulta`):
-  - 1-10 min → **10 Bs** (fijo)
-  - 11+ min → 10 Bs + **20 Bs por cada bloque de 10 min iniciado** después de los primeros 10
-  - Ejemplos: 11 min = 30 Bs · 20 min = 30 Bs · 21 min = 50 Bs · 31 min = 70 Bs
-- **No-registro: 20 Bs por día** con fichaje incompleto (marcó entrada o salida, no ambas). Ese día se pagan las **horas programadas**, no las fichadas.
+- **Multa por franjas con tope** (regla Anuar 21-ago-2026, hardcodeada en `utils/lateness.js` → `calcularMulta`):
+  - 1-10 min → **10 Bs** · 11-20 min → **20 Bs** · 21+ min → **30 Bs (tope, no crece más)**
+- **No-registro: 40 Bs por día** con fichaje incompleto (marcó entrada o salida, no ambas). Ese día se pagan las **horas programadas**, no las fichadas.
+- **Falta: 110 Bs por día** programado sin ningún fichaje (además de no pagarse esas horas). Se puede **justificar** (vacaciones/permiso) desde el detalle del día en Sueldos → no se descuenta.
 - **Tardanza de +3h → no se cobra**: casi siempre significa horario mal cargado. El día se marca en rojo para revisar el Excel.
 - **Día sin horario cargado → no se evalúa**: ni falta ni tardanza; se pagan las horas fichadas y se avisa en rojo.
 - La multa se **deduce automáticamente del total a pagar**; el pago por empleado nunca baja de 0.
@@ -78,7 +77,7 @@ horas_pagables = horas fichadas del día
 horas_extra    = solo lo que pasa de 30 min DESPUÉS de la salida programada (por día)
 horas_normales = horas_pagables - horas_extra
 bruto          = (normales × tarifa) + (extras × tarifa × 1.5)
-descuentos     = multas por tardanza (no condonadas, con tope de 3h) + 20 Bs × días sin registro
+descuentos     = multas tardanza (10/20/30 tope, no condonadas, >3h no cobra) + 40 Bs × días sin registro + 110 Bs × faltas no justificadas
 total_a_pagar  = max(0, bruto - descuentos)
 ```
 
@@ -161,7 +160,7 @@ frontend/src/
 │   └── ui/             # Avatar · Skeleton
 ├── hooks/              # useJibble · useLocalConfig · useAlerts · useCarpetaHorarios · useActiveWorkspace
 ├── utils/
-│   ├── lateness.js     # ★ Detección + multa escalonada (10 Bs ≤10min, +20 Bs / 10 min)
+│   ├── lateness.js     # ★ Detección + multa por franjas (10/20/30 Bs con tope)
 │   ├── stats.js        # ★ Motor por día (resolverDia) + agregaciones + comentarioAnomalia
 │   ├── payroll.js      # ★ Cálculo planilla con descuentos
 │   ├── resumen-sueldos.js  # ★ Agregación por rango (la usan /sueldos y Planilla)

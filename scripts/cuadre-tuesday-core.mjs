@@ -358,7 +358,7 @@ ${bancoSinMapa.length ? `<p class="nota mal">Beneficiarios del banco sin mapear 
 ${turnosParse.noEncontrados.length ? `<p class="nota warn">En el cuaderno pero SIN marcas en el aparato este mes: ${turnosParse.noEncontrados.map(esc).join(' · ')} — ¿no marcan, rotaron, o les falta ID?</p>` : ''}
 
 <h2><span class="num">2.</span> Retrasos y sus descuentos, día por día</h2>
-<p class="nota">Contra la ENTRADA del cuaderno del gerente. Multa escalonada del local: 1–10 min = Bs 10 · cada bloque de 10 min adicional +Bs 20 · &gt;3 h no se cobra (horario mal cargado, sale en rojo).</p>
+<p class="nota">Contra la ENTRADA del cuaderno del gerente. Multa del local: 1–10 min = Bs 10 · 11–20 = Bs 20 · 21+ = Bs 30 (tope) · &gt;3 h no se cobra (horario mal cargado, sale en rojo).</p>
 ${filasRetraso.length ? `<table>
   <tr><th>Empleado</th><th>Día</th><th class="n">Entrada cuaderno</th><th class="n">Marcó</th><th class="n">Min tarde</th><th class="n">Multa</th></tr>
   ${filasRetraso.map(x => `<tr><td>${esc(x.nombre)}</td><td>${fmtDia(x.dia)}</td><td class="n">${esc(x.prog)}</td><td class="n">${esc(x.real)}</td><td class="n">${x.mins}</td><td class="n mal">−${bsF(x.multa)}</td></tr>`).join('')}
@@ -411,7 +411,7 @@ ${Object.keys(descPorNombre).length ? `<table>
 </table>
 
 <p class="firma">Cuadre generado automáticamente · reglas: sueldo ref. Bs 3.300 / 208 h/mes (Bs 15,865/h) · extras aprobadas Bs 13,75/h (al aprobar se pagan TODOS los minutos; se puede aprobar parcial) ·
-llegar antes no suma (≥30 min antes = revisar) · multa retraso escalonada · no-registro Bs 20/día · fuentes: biométrico físico + cuaderno del gerente + planilla bancaria · ${esc(mesStr)}</p>
+llegar antes no suma (≥30 min antes = revisar) · multa retraso escalonada · no-registro Bs 40/día · falta Bs 110/día · fuentes: biométrico físico + cuaderno del gerente + planilla bancaria · ${esc(mesStr)}</p>
 
 </main></body></html>`
 }

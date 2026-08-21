@@ -122,13 +122,16 @@ export default function Settings({ cfg }) {
           />
         </div>
         <div className="mt-4 rounded-xl border border-accent/30 bg-accent/5 p-4">
-          <div className="text-sm font-semibold text-ink-50 mb-2">Regla de multa por tardanza (escalonada)</div>
+          <div className="text-sm font-semibold text-ink-50 mb-2">Reglas de descuentos (todos los locales)</div>
           <ul className="text-sm text-ink-200 space-y-1 list-disc pl-5">
-            <li><span className="font-mono font-semibold text-ink-100">1 a 10 min</span> tarde → <span className="font-semibold text-accent-400">10 Bs</span> (fijo)</li>
-            <li><span className="font-mono font-semibold text-ink-100">11 min o más</span> tarde → <span className="font-semibold text-accent-400">10 Bs + 20 Bs por cada bloque de 10 min iniciado</span> después de los primeros 10.</li>
+            <li>Tardanza <span className="font-mono font-semibold text-ink-100">1 a 10 min</span> → <span className="font-semibold text-accent-400">10 Bs</span></li>
+            <li>Tardanza <span className="font-mono font-semibold text-ink-100">11 a 20 min</span> → <span className="font-semibold text-accent-400">20 Bs</span></li>
+            <li>Tardanza <span className="font-mono font-semibold text-ink-100">21 min o más</span> → <span className="font-semibold text-accent-400">30 Bs</span> (tope: no crece más)</li>
+            <li>No marcó entrada o salida (vino) → <span className="font-semibold text-accent-400">40 Bs</span></li>
+            <li>Faltó al trabajo (día programado sin marcar) → <span className="font-semibold text-accent-400">110 Bs</span> además de no pagarse esas horas. Se puede justificar (vacaciones/permiso) desde el detalle del día en Sueldos.</li>
           </ul>
           <div className="text-xs text-ink-300 mt-2">
-            Ejemplos: 1min=10Bs · 10min=10Bs · 11min=30Bs · 20min=30Bs · 21min=50Bs · 30min=50Bs · 31min=70Bs.
+            Tardanza de más de 3 horas no se cobra: casi siempre es horario mal cargado (el día sale en rojo para revisarlo).
           </div>
         </div>
       </Section>

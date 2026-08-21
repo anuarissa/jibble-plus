@@ -3,6 +3,7 @@ import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, CalendarDays, Cal
 import { addDays, startOfWeek, format, addMonths, startOfMonth, endOfMonth } from 'date-fns'
 import { Avatar } from '../ui/Avatar'
 import { resumenSueldos } from '../../utils/resumen-sueldos'
+import { TARIFA_MULTA_LABEL } from '../../utils/liquidacion-empleado'
 import { MODELO_MENSUAL_DEFAULT } from '../../utils/payroll'
 import { formatBs, formatHoras, formatFechaCorta, formatMesAno } from '../../utils/format'
 import { exportCSV, exportExcel } from '../../utils/export'
@@ -66,10 +67,12 @@ export function PayrollTable({ group, empleados, attendance, schedules, cfg }) {
     { label: 'Horas extra', accessor: 'horasExtra', width: 12, numFmt: '0.00' },
     { label: 'Bruto (Bs)', accessor: 'bruto', width: 12, numFmt: '"Bs" #,##0.00' },
     { label: 'Min tarde', accessor: r => r.minutosTardeTotales || 0, width: 10, numFmt: '0' },
-    { label: 'Tarifa multa', accessor: () => '10 Bs hasta 10 min · +20 Bs cada 10 min adicional', width: 44 },
+    { label: 'Tarifa multa', accessor: () => TARIFA_MULTA_LABEL, width: 44 },
     { label: 'Descuento tardanza (Bs)', accessor: 'descuentoTardanza', width: 18, numFmt: '"Bs" #,##0.00' },
     { label: 'Días no-registro', accessor: r => r.diasNoRegistro || 0, width: 14, numFmt: '0' },
     { label: 'Descuento no-registro (Bs)', accessor: r => r.descuentoNoRegistro || 0, width: 20, numFmt: '"Bs" #,##0.00' },
+    { label: 'Días falta', accessor: r => r.diasFalta || 0, width: 10, numFmt: '0' },
+    { label: 'Descuento faltas (Bs)', accessor: r => r.descuentoFaltas || 0, width: 18, numFmt: '"Bs" #,##0.00' },
     { label: 'Total a pagar (Bs)', accessor: 'totalAPagar', width: 16, numFmt: '"Bs" #,##0.00' },
   ]
   const fileBase = `planilla_${(cfg.config.locales[group.id]?.name || group.name || 'local').replace(/[^a-z0-9]+/gi, '_')}_${fileLabel}`

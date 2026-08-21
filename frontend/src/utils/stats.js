@@ -354,6 +354,9 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, extrasAproba
   }
   if (!fich) return {
     state: 'idle', day, dayStr, falto: true,
+    // Falta condonada (vacaciones/permiso justificado): sigue contando como
+    // falta en la lista, pero NO se cobra la multa de Bs 110.
+    faltaCondonada: !!condonaciones?.[claveCondonacionFalta(emp.id, dayStr)]?.condonada,
     motivoColor: 'falta',
     programadoStart: startTimeProgramado,
     programadoEnd: endTimeProgramado,
@@ -545,26 +548,41 @@ export function tablaSemanal({ empleados, attendance, schedules, ini, condonacio
   return { dias, filas }
 }
 
-export const MULTA_NO_REGISTRO = 20  // Bs por día con registro incompleto (falta ingreso o salida)
+// Escala de descuentos (regla Anuar 21-ago-2026, todos los locales):
+//   tardanza 1-10 min = 10 Bs · 11-20 = 20 Bs · 21+ = 30 Bs tope (utils/lateness.js)
+export const MULTA_NO_REGISTRO = 40  // Bs por día con registro incompleto (marcó solo ingreso o solo salida)
+export const MULTA_FALTA = 110       // Bs por día programado sin NINGÚN fichaje (además de no pagar esas horas)
+
+// Clave del store de condonaciones para justificar una FALTA (vacaciones,
+// permiso): las tardanzas se condonan por attendance.id; las faltas no tienen
+// fichaje, así que se condonan por persona+día.
+export const claveCondonacionFalta = (personId, dayStr) => `falta-${personId}-${dayStr}`
 
 // Agrega retrasos (tiempo + multa Bs), extras (solo lo que pasa de 30 min/día),
-// descuento por no-registro y horas pagables de un conjunto de celdas resueltas.
-// Base del cálculo monetario y de planilla.
+// descuentos por no-registro y por faltas, y horas pagables de un conjunto de
+// celdas resueltas. Base del cálculo monetario y de planilla.
 //   minTarde:            suma de minutos de retraso de entrada (1–180; >180 = horario mal config, se ignora)
-//   multaBs:             suma de multas por tardanza (regla escalonada). Se ACUMULA con el no-registro.
+//   multaBs:             suma de multas por tardanza (10/20/30 Bs con tope). Se ACUMULA con lo demás.
 //   horasExtra:          horas extra (solo >30 min/día, descartando días incompletos)
 //   diasNoRegistro:      cantidad de días con registro incompleto
-//   descuentoNoRegistro: 20 Bs × diasNoRegistro
+//   descuentoNoRegistro: 40 Bs × diasNoRegistro
+//   diasFalta:           días programados YA PASADOS sin ningún fichaje (sin contar condonadas)
+//   descuentoFaltas:     110 Bs × diasFalta
 //   horasPagables:       horas que SÍ se pagan (días incompletos/absurdos → horario programado)
 //   anomalias:           cantidad de días con datos a revisar
 export function extrasYRetrasoDeCells(cells) {
   let minExtra = 0, minTarde = 0, multaBs = 0, anomalias = 0
   let diasNoRegistro = 0, descuentoNoRegistro = 0, horasPagables = 0
+  let diasFalta = 0, descuentoFaltas = 0
   // Señales de revisión (reglas de la casa): extras sin aprobar y llegadas muy tempranas.
   let minExtraPendiente = 0, diasExtraPendiente = 0, diasTemprano = 0, minAntesTotal = 0
+  const hoyStr = format(new Date(), 'yyyy-MM-dd')
   for (const c of (cells || [])) {
     horasPagables += c.horasPagables || 0
     if (c.registroIncompleto) { diasNoRegistro++; descuentoNoRegistro += MULTA_NO_REGISTRO }
+    // Falta = día programado sin ningún fichaje, solo días YA pasados (hoy aún
+    // puede venir). Condonada (vacaciones/permiso) → no se cobra.
+    if (c.falto && c.dayStr < hoyStr && !c.faltaCondonada) { diasFalta++; descuentoFaltas += MULTA_FALTA }
     // Tardanza real (1–180 min): se acumula aunque el día sea incompleto. >180 = horario mal config.
     // La multa NO se cobra si la tardanza fue condonada. En turnos partidos la multa
     // viene precalculada por tramo (multaDia, que ya excluye los tramos condonados).
@@ -583,7 +601,8 @@ export function extrasYRetrasoDeCells(cells) {
     if (c.anomalia) anomalias++
   }
   return { horasExtra: minExtra / 60, minExtra, minTarde, multaBs,
-           diasNoRegistro, descuentoNoRegistro, horasPagables, anomalias,
+           diasNoRegistro, descuentoNoRegistro, diasFalta, descuentoFaltas,
+           horasPagables, anomalias,
            minExtraPendiente, diasExtraPendiente, diasTemprano, minAntesTotal }
 }
 
@@ -598,8 +617,8 @@ export function comentarioAnomalia(c) {
   }
   if (!c.anomalia) return null
   // Orden: primero lo que rompe el dato del día, después lo que delata un horario mal cargado.
-  if (c.salidaState === 'sinEntrada') return 'Fichó salida sin entrada — se pagan las horas programadas y se descuentan 20 Bs por no-registro.'
-  if (c.registroIncompleto) return 'Fichó entrada pero no salida — se pagan las horas programadas y se descuentan 20 Bs por no-registro.'
+  if (c.salidaState === 'sinEntrada') return `Fichó salida sin entrada — se pagan las horas programadas y se descuentan ${MULTA_NO_REGISTRO} Bs por no-registro.`
+  if (c.registroIncompleto) return `Fichó entrada pero no salida — se pagan las horas programadas y se descuentan ${MULTA_NO_REGISTRO} Bs por no-registro.`
   if (c.horas > 16) return 'Horas absurdas (olvidó cerrar el fichaje) — se pagan las horas programadas, no las fichadas.'
   if (c.mins > 180) return `Entró ${Math.floor(c.mins / 60)}h ${c.mins % 60}min tarde: el horario cargado no coincide con la realidad. No se cobra multa — revisa el Excel de turnos.`
   if (c.minAntes > 180) return `Marcó entrada ${Math.floor(c.minAntes / 60)}h ${c.minAntes % 60}min antes de su horario (${c.programadoStart}–${c.programadoEnd}): ese horario no es el que trabaja. Se pagan las horas fichadas sin recorte — corrige su horario en Empleados o carga el turno real del Excel.`

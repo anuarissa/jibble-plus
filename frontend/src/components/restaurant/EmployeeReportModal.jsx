@@ -6,6 +6,7 @@ import { addDays, format, startOfWeek } from 'date-fns'
 import { X, ChevronLeft, ChevronRight, Printer, FileSpreadsheet, Clock, Calendar, AlertTriangle, DollarSign } from 'lucide-react'
 import { Avatar } from '../ui/Avatar'
 import { tablaSemanal, tardanzasConCondonacion, attendanceEnRango, groupByPerson, extrasYRetrasoDeCells } from '../../utils/stats'
+import { TARIFA_MULTA_LABEL } from '../../utils/liquidacion-empleado'
 import { planillaLocal } from '../../utils/payroll'
 import { formatHora, formatHoras, formatBs, formatFecha } from '../../utils/format'
 import { exportExcelMultiSheet } from '../../utils/export'
@@ -131,7 +132,7 @@ export function EmployeeReportModal({ empleados, attendance, schedules, cfg, gro
       { Campo: '— Planilla (Bs) —', Valor: '' },
       { Campo: 'Tarifa/h', Valor: datos.planilla.tarifa || 0 },
       { Campo: 'Bruto', Valor: datos.planilla.bruto || 0 },
-      { Campo: 'Tarifa multa', Valor: '10 Bs hasta 10 min · +20 Bs cada 10 min adicional' },
+      { Campo: 'Tarifa multa', Valor: TARIFA_MULTA_LABEL },
       { Campo: 'Descuento tardanza', Valor: datos.planilla.descuentoTardanza || 0 },
       { Campo: 'TOTAL A PAGAR', Valor: datos.planilla.totalAPagar || 0 },
     ]

@@ -3,6 +3,7 @@ import { X, Check, Clock, LogIn, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 import { Avatar } from '../ui/Avatar'
 import { formatBs, formatFecha, formatHora, formatHoras } from '../../utils/format'
+import { MULTA_NO_REGISTRO } from '../../utils/stats'
 import { calcularMulta } from '../../utils/lateness'
 
 // Modal que muestra el detalle de una celda (un día específico de un empleado).
@@ -112,7 +113,7 @@ export function CeldaDetalleModal({ celda, empleado, cfg, onClose }) {
                   <span className="text-bad flex items-center gap-1.5">
                     ⚠ {salidaState === 'sinSalida' ? 'No marcó salida' : 'No marcó ingreso'}
                   </span>
-                  <span className="text-bad font-display">−{formatBs(20)}</span>
+                  <span className="text-bad font-display">−{formatBs(MULTA_NO_REGISTRO)}</span>
                 </div>
               )}
             </>
@@ -120,7 +121,7 @@ export function CeldaDetalleModal({ celda, empleado, cfg, onClose }) {
         </div>
         {registroIncompleto && (
           <div className="mb-4 -mt-1 text-xs text-bad/90 bg-bad/10 rounded-lg px-3 py-2">
-            Descuento de 20 Bs por registro incompleto. Las horas de este día se pagan según el horario programado.
+            Descuento de {MULTA_NO_REGISTRO} Bs por registro incompleto. Las horas de este día se pagan según el horario programado.
           </div>
         )}
 
