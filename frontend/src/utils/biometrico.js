@@ -11,7 +11,7 @@
 
 import * as XLSX from 'xlsx-js-style'
 import { normalizarNombre, matchEmpleado, construirIndiceNombres } from './excel-turnos'
-import { nombreDeAparato } from '../config/employees'
+import { nombreDeAparato, esFueraDePlanilla } from '../config/employees'
 
 const aMin = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m }
 
@@ -168,7 +168,7 @@ export const personaSinteticaId = (groupId, idBio) => `bio:${groupId}:${idBio}`
 // El nombre sale del aparato salvo que esté corregido en RENOMBRES_APARATO
 // (config/employees.js) — así la web y el CLI muestran lo mismo.
 export function personasSinteticas(groupId, personasBio) {
-  return (personasBio || []).map(p => {
+  return (personasBio || []).filter(p => !esFueraDePlanilla(groupId, p.idBio)).map(p => {
     const nombre = titulo(nombreDeAparato(groupId, p.idBio, p.nombre))
     return {
       id: personaSinteticaId(groupId, p.idBio),
@@ -210,6 +210,8 @@ export function resolverPersonasBio({ groupId, personasBio, empleadosJibble = []
   const avisos = []
   if (!empleadosJibble.length) {
     for (const p of (personasBio || [])) {
+      // Cubre-turnos que se pagan al día: marcan, pero no entran a la planilla.
+      if (esFueraDePlanilla(groupId, p.idBio)) { mapa[p.idBio] = 'IGNORAR'; continue }
       mapa[p.idBio] = personaSinteticaId(groupId, p.idBio)
       creados.push(p)
     }
@@ -217,6 +219,7 @@ export function resolverPersonasBio({ groupId, personasBio, empleadosJibble = []
   }
   const indice = construirIndiceNombres(empleadosJibble)
   for (const p of (personasBio || [])) {
+    if (esFueraDePlanilla(groupId, p.idBio)) { mapa[p.idBio] = 'IGNORAR'; continue }
     const alias = aliasDe(aliases, p)
     if (alias === ALIAS_CREAR) {
       // Empleado que solo existe en el aparato: id sintético estable.

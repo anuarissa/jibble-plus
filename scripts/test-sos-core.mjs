@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import * as XLSX from 'xlsx-js-style'
 import { parseWorkbookTurnos, construirIndiceNombres, matchEmpleado } from '../frontend/src/utils/excel-turnos'
-import { parseBiometricoWorkbook, personasSinteticas, personaSinteticaId } from '../frontend/src/utils/biometrico'
+import { parseBiometricoWorkbook, personasSinteticas, personaSinteticaId, resolverPersonasBio, marcasToAttendance } from '../frontend/src/utils/biometrico'
 import { GROUP_IDS, ALIAS_TURNOS_FIJOS } from '../frontend/src/config/employees'
 
 const SOS = GROUP_IDS.SOS_POLLO
@@ -70,6 +70,20 @@ export async function correr() {
   // Gente del cuaderno que no marcó en julio: se informa, NUNCA se crea sola.
   const noMarcaron = r.noEncontrados.filter(n => /ANNA|SHARUK|JHULIANA|ELENA/i.test(n))
   check(`los que no marcaron solo se informan (${noMarcaron.join(', ')})`, noMarcaron.length === 4)
+
+  // ── Cubre-turnos que se pagan al día (VLADY id 29, ALEJANDRO id 55): marcan
+  // en el aparato pero NO entran a la planilla de SOS. ──
+  check('VLADY y ALEJANDRO no figuran como empleados del local',
+    !empleados.some(e => [29, 55].includes(e.idBio)), empleados.map(e => `${e.idBio}:${e.fullName}`).join(', '))
+  check(`quedan ${empleados.length} personas en la planilla (9 del aparato − 2)`, empleados.length === 7)
+  const { mapa } = resolverPersonasBio({ groupId: SOS, personasBio: bio.personasBio })
+  check('sus marcas se excluyen (mapa = IGNORAR)', mapa[29] === 'IGNORAR' && mapa[55] === 'IGNORAR',
+    `${mapa[29]} / ${mapa[55]}`)
+  const att = marcasToAttendance(bio.marcas, { groupId: SOS, mapa })
+  check('ninguna de sus marcas llega a la planilla',
+    !att.some(a => a.personId === personaSinteticaId(SOS, 29) || a.personId === personaSinteticaId(SOS, 55)))
+  check('el resto del personal sí conserva sus marcas',
+    att.some(a => a.personId === bernardo.id) && att.some(a => a.personId === nico74.id))
 
   return fallos
 }

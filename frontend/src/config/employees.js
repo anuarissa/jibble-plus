@@ -209,6 +209,20 @@ export function nombreDeAparato(groupId, idBio, nombreOriginal) {
   return RENOMBRES_APARATO[groupId]?.[idBio] || nombreOriginal
 }
 
+// Gente que MARCA en el aparato pero NO cobra sueldo por la app: cubre-turnos
+// que se pagan al día. Sus marcas no entran a la planilla del local ni figuran
+// como empleados. { [groupId]: [idBio...] }
+export const SIN_PLANILLA_APARATO = {
+  [GROUP_IDS.SOS_POLLO]: [
+    29,   // VLADY (1 día en julio) — no cubre sueldo (Anuar, 21-ago-2026)
+    55,   // ALEJANDRO (7 días en julio) — íd.
+  ],
+}
+
+export function esFueraDePlanilla(groupId, idBio) {
+  return (SIN_PLANILLA_APARATO[groupId] || []).includes(Number(idBio))
+}
+
 // Locales SIN cuenta Jibble: su personal existe SOLO en el biométrico físico
 // (personas sintéticas). Lista EXPLÍCITA a propósito: si un local con cuenta
 // Jibble no muestra gente (p.ej. el workspace activo excluye su cuenta), NO se
