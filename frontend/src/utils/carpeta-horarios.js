@@ -15,7 +15,7 @@ import { addDays } from 'date-fns'
 import { parseWorkbookTurnos, normalizarNombre } from './excel-turnos'
 import { esWorkbookTuesday, parseWorkbookTurnosTuesday } from './excel-turnos-tuesday'
 import { isoWeekKey } from './turnos'
-import { ALIAS_TURNOS_FIJOS } from '../config/employees'
+import { ALIAS_TURNOS_FIJOS, ALIAS_BIO_FIJOS } from '../config/employees'
 
 // Ventana de "recencia": semana actual + N anteriores. Nombres no encontrados y
 // warnings de celdas de semanas más viejas se silencian (alta rotación de personal
@@ -110,6 +110,12 @@ export function getAliases(groupId) {
 // haber dos personas del aparato con el mismo nombre y se resuelven por idBio.
 export function getAliasesTurnos(groupId) {
   return { ...(ALIAS_TURNOS_FIJOS[groupId] || {}), ...getAliases(groupId) }
+}
+
+// Alias para resolver la gente del APARATO biométrico: fijos en código (ej.
+// ANGELO/ANGEL de Huper → crear empleado) + los del usuario, que ganan.
+export function getAliasesBio(groupId) {
+  return { ...(ALIAS_BIO_FIJOS[groupId] || {}), ...getAliases(groupId) }
 }
 
 export function setAlias(groupId, nombreExcel, personIdOIgnorar) {

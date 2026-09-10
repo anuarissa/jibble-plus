@@ -9,7 +9,7 @@ import { getScheduleForPerson, shouldSkipPerson, resolveGroupId, resolveCargo, E
 import { useActiveWorkspace } from './useActiveWorkspace'
 import { personasSinteticas, sinteticosPorAlias } from '../utils/biometrico'
 import { readBio, useBioVersion } from '../utils/biometrico-store'
-import { getAliases } from '../utils/carpeta-horarios'
+import { getAliasesBio } from '../utils/carpeta-horarios'
 import { useAliasVersion } from './useAliasVersion'
 
 // Skip hardcoded (Owner) — siempre filtrar, no editable por usuario
@@ -140,7 +140,7 @@ export function useJibble(personOverrides = {}, locales = {}) {
       }
       // Locales CON Jibble: solo los nombres que el usuario marcó como
       // "crear empleado (solo biométrico)" — decisión explícita, nunca automática.
-      for (const p of sinteticosPorAlias(groupId, personasBio, getAliases(groupId))) sinteticos.push(conCargo(p))
+      for (const p of sinteticosPorAlias(groupId, personasBio, getAliasesBio(groupId))) sinteticos.push(conCargo(p))
     }
     return [...jibblePeople, ...sinteticos]
   }, [raw.peopleRaw, personOverrides, bioVersion, aliasVersion])

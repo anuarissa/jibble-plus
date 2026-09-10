@@ -8,9 +8,9 @@ import { makeJibbleClient } from '../backend/jibble-client.js'
 import {
   turnosDeCarpeta, bioDeCarpeta, ALIAS_GERENTE_TUESDAY, TUESDAY_SIN_BIOMETRICO,
 } from './reporte-mensual-core.mjs'
-import { personasSinteticas } from '../frontend/src/utils/biometrico'
+import { personasSinteticas, sinteticosPorAlias } from '../frontend/src/utils/biometrico'
 import { isoWeekKey } from '../frontend/src/utils/turnos'
-import { GROUP_IDS, resolveGroupId, esPersonaDummy, EMPLOYEE_OVERRIDES } from '../frontend/src/config/employees'
+import { GROUP_IDS, resolveGroupId, esPersonaDummy, EMPLOYEE_OVERRIDES, ALIAS_BIO_FIJOS } from '../frontend/src/config/employees'
 
 const CARPETA_SUELDOS_TUESDAY = 'C:/Users/anuar/OneDrive/Anuar/Tuesday/SUELDOS/SUELDOS 2026'
 const CARPETA_CUADERNOS_TUESDAY = 'C:/Users/anuar/OneDrive/TUESDAY AMERICA/CUADERNOS DE GERENTES/CUADERNOS GERENTES'
@@ -87,7 +87,10 @@ export async function armarSeed(mesStr, raiz) {
         .filter(p => EMPLOYEE_OVERRIDES[p.id]?.skip !== true)
         .map(p => ({ ...p, groupId: resolveGroupId(p.id, p.groupId, {}, 'B') }))
         .filter(p => p.groupId === GROUP_IDS.SBARRO_HUPER)
-      const tH = turnosDeCarpeta(CARPETA_HORARIOS_HUPER, empHup, GROUP_IDS.SBARRO_HUPER, isoWeekKey(ini))
+      // + gente que solo existe en el aparato pero cobra por planilla (ANGELO/ANGEL):
+      // sin esto sus filas del cuaderno ("ANGHELO", "ANGEL") no se asignan a nadie.
+      const sintHup = bioHup ? sinteticosPorAlias(GROUP_IDS.SBARRO_HUPER, bioHup.personas, ALIAS_BIO_FIJOS[GROUP_IDS.SBARRO_HUPER] || {}) : []
+      const tH = turnosDeCarpeta(CARPETA_HORARIOS_HUPER, [...empHup, ...sintHup], GROUP_IDS.SBARRO_HUPER, isoWeekKey(ini))
       mergeTurnos(tH.aplicarPorSemana)
       resumen.push(`SBARRO HUPER: turnos ${Object.keys(tH.aplicarPorSemana).length} semanas de ${tH.archivos.length} planillas`)
     } catch (e) {

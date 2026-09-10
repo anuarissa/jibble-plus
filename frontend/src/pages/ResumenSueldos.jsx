@@ -15,17 +15,17 @@ import { addDays, addMonths, format, startOfMonth, endOfMonth, startOfWeek, pars
 import { useJibble } from '../hooks/useJibble'
 import { useActiveWorkspace } from '../hooks/useActiveWorkspace'
 import { useCarpetaBiometrico } from '../hooks/useCarpetaBiometrico'
-import { GRUPOS_SOLO_BIOMETRICO } from '../config/employees'
+import { GRUPOS_SOLO_BIOMETRICO, fueraDeRango } from '../config/employees'
 import { Avatar } from '../components/ui/Avatar'
 import { Skeleton } from '../components/ui/Skeleton'
 import { FuenteBiometricoPanel } from '../components/sueldos/FuenteBiometricoPanel'
 import { resumenSueldos } from '../utils/resumen-sueldos'
 import { MODELO_MENSUAL_DEFAULT } from '../utils/payroll'
-import { celdaToRow, comentarioAnomalia, claveCondonacionFalta } from '../utils/stats'
+import { celdaToRow, comentarioAnomalia, claveCondonacionFalta, MAX_EXTRA_MANUAL } from '../utils/stats'
 import { resolverPersonasBio, marcasToAttendance, aliasKeyBio } from '../utils/biometrico'
 import { exportLiquidacionEmpleado, multaDelDia, noRegistroDelDia, faltaDelDia } from '../utils/liquidacion-empleado'
 import { marcasEnRango, personasBioDeLocal, mesesConDatos, localesConBio, useBioVersion } from '../utils/biometrico-store'
-import { getAliases, setAlias } from '../utils/carpeta-horarios'
+import { getAliasesBio, setAlias } from '../utils/carpeta-horarios'
 import { asumirSemanasFaltantes, isoWeekKey, lunesDeSemana } from '../utils/turnos'
 import { rutaSugerida } from '../config/carpetas-locales'
 
@@ -114,10 +114,12 @@ export default function ResumenSueldos({ cfg }) {
 
   const ready = !data.loading && data.people && data.schedules && data.attendance && grupos.length > 0
 
-  const empleadosLocal = useMemo(
-    () => (data.people || []).filter(p => p.groupId === grupoActivo),
-    [data.people, grupoActivo]
-  )
+  // Sin los que no trabajaron ningún día del rango (FECHAS_BAJA / FECHAS_ALTA):
+  // no aparecen con faltas ni fila vacía, pero sí en los meses que trabajaron.
+  const empleadosLocal = useMemo(() => {
+    const iniStr = format(ini, 'yyyy-MM-dd'), finStr = format(fin, 'yyyy-MM-dd')
+    return (data.people || []).filter(p => p.groupId === grupoActivo && !fueraDeRango(p.id, iniStr, finStr))
+  }, [data.people, grupoActivo, ini, fin])
   const empleadosFiltrados = useMemo(
     () => (personId ? empleadosLocal.filter(p => p.id === personId) : empleadosLocal),
     [empleadosLocal, personId]
@@ -155,7 +157,7 @@ export default function ResumenSueldos({ cfg }) {
     const empleadosJibble = esLocalBio ? [] : empleadosLocal.filter(p => !p.synthetic)
     const marcas = marcasEnRango(grupoActivo, iniStr, finStr)
     const { mapa, noEncontrados, pendientes, avisos } = resolverPersonasBio({
-      groupId: grupoActivo, personasBio, empleadosJibble, aliases: getAliases(grupoActivo), marcas,
+      groupId: grupoActivo, personasBio, empleadosJibble, aliases: getAliasesBio(grupoActivo), marcas,
     })
     // Días con marcas por id del aparato — se muestran junto al nombre para
     // distinguir a dos personas homónimas (ej. FABIOLA 26 días vs fabiola 2 días).
@@ -194,10 +196,18 @@ export default function ResumenSueldos({ cfg }) {
     return { turnosEfectivos: relleno, semanasAsumidas, semanasSinHorario: [] }
   }, [esLocalBio, cfg.turnos, ini, fin, empleadosLocal])
 
+  // Fuente App (fichajes de Jibble): la gente que solo existe en el aparato
+  // (empleados creados "solo biométrico") no usa la app — sin esto aparecerían
+  // con falta en cada día que tienen horario.
+  const empleadosPlanilla = useMemo(
+    () => (fuenteEfectiva === 'app' ? empleadosFiltrados.filter(p => !p.synthetic) : empleadosFiltrados),
+    [empleadosFiltrados, fuenteEfectiva]
+  )
+
   const resumen = useMemo(() => {
-    if (!ready || empleadosFiltrados.length === 0) return null
+    if (!ready || empleadosPlanilla.length === 0) return null
     return resumenSueldos({
-      empleados: empleadosFiltrados,
+      empleados: empleadosPlanilla,
       attendance: attendanceFuente,
       schedules: data.schedules,
       condonaciones: cfg.condonaciones,
@@ -210,7 +220,7 @@ export default function ResumenSueldos({ cfg }) {
       groupId: grupoActivo,
       modeloMensual,
     })
-  }, [ready, empleadosFiltrados, attendanceFuente, data.schedules, cfg.condonaciones, cfg.extrasAprobadas, turnosEfectivos, cfg.personOverrides, ini, fin, cfg.config.settings, grupoActivo, modeloMensual])
+  }, [ready, empleadosPlanilla, attendanceFuente, data.schedules, cfg.condonaciones, cfg.extrasAprobadas, turnosEfectivos, cfg.personOverrides, ini, fin, cfg.config.settings, grupoActivo, modeloMensual])
 
   // Series de las gráficas
   const chartEmpleados = useMemo(() => (resumen?.filas || []).map(f => ({
@@ -614,6 +624,7 @@ export default function ResumenSueldos({ cfg }) {
                         fuente={fuenteEfectiva}
                         modeloMensual={modeloMensual}
                         aprobarExtra={cfg.aprobarExtra}
+                        denegarExtra={cfg.denegarExtra}
                         revertirExtra={cfg.revertirExtra}
                         condonarFalta={cfg.condonar}
                         revertirCondonacionFalta={cfg.revertirCondonacion}
@@ -692,60 +703,87 @@ function TooltipDia({ active, payload, label }) {
 // Celda de extras del detalle diario. Regla de la casa (ago-2026 v2): quedarse
 // >15 min tras la salida = extra aprobable; si se aprueba se pagan TODOS los
 // minutos (incluidos los primeros 15) y se puede aprobar PARCIAL ("de tus 45
-// te apruebo 30") con el input.
-function CeldaExtra({ c, aprobarExtra, revertirExtra }) {
+// te apruebo 30") con el input. Días ANÓMALOS (horas absurdas, horario mal
+// cargado): el cálculo automático no sirve → Anuar escribe a mano cuántos
+// minutos extra pagar, o deniega (sep-2026). Denegar también existe en días
+// normales para sacar el pendiente de la lista.
+const BTN_CHICO = 'text-[10px] px-1.5 py-0.5 rounded-md border focus-visible:outline focus-visible:outline-1 active:opacity-70 transition-colors'
+
+function CeldaExtra({ c, aprobarExtra, denegarExtra, revertirExtra }) {
   const [minutos, setMinutos] = useState('')
-  if (c.anomalia || !c.extraKey) return <span className="text-ink-400">—</span>
+  if (!c.extraKey) return <span className="text-ink-400">—</span>
+
+  const deshacer = (label, title) => (
+    <button
+      onClick={e => { e.stopPropagation(); revertirExtra(c.extraKey) }}
+      className={`${BTN_CHICO} border-white/10 text-ink-300 hover:text-ink-50 hover:border-white/25 focus-visible:outline-accent`}
+      title={title}
+    >{label}</button>
+  )
+
+  if (c.extraDenegada) {
+    return (
+      <span className="inline-flex items-center gap-1.5" data-testid="extra-denegada">
+        <span className="text-ink-400" title="Decidiste que este día no se paga extra">No se paga</span>
+        {deshacer('Deshacer', 'Volver a dejar este día pendiente de tu decisión')}
+      </span>
+    )
+  }
 
   if (c.extraAprobada && c.minExtraComputado > 0) {
-    const parcial = c.minExtraComputado < c.extraAprobable
+    const parcial = !c.anomalia && c.minExtraComputado < c.extraAprobable
     return (
-      <span className="inline-flex items-center gap-1.5">
+      <span className="inline-flex items-center gap-1.5" data-testid="extra-aprobada">
         <span className={parcial ? 'text-warn font-medium' : 'text-good font-medium'}
-          title={parcial ? `Aprobaste ${c.minExtraComputado} de los ${c.extraAprobable} min que se quedó — el resto sigue pendiente` : `Aprobado completo: ${c.minExtraComputado} min pagados`}>
+          title={c.anomalia ? `Aprobado a mano: ${c.minExtraComputado} min extra se pagan además de las horas del día`
+            : parcial ? `Aprobaste ${c.minExtraComputado} de los ${c.extraAprobable} min que se quedó — el resto sigue pendiente`
+            : `Aprobado completo: ${c.minExtraComputado} min pagados`}>
           +{c.minExtraComputado}{parcial ? ` de ${c.extraAprobable}` : ''} ✓
         </span>
-        <button
-          onClick={e => { e.stopPropagation(); revertirExtra(c.extraKey) }}
-          className="text-[10px] px-1.5 py-0.5 rounded-md border border-white/10 text-ink-300 hover:text-ink-50 hover:border-white/25 focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent active:opacity-70 transition-colors"
-          title="Quitar la aprobación: estos minutos dejan de pagarse (puedes volver a aprobar otra cantidad)"
-        >Quitar</button>
+        {deshacer('Quitar', 'Quitar la aprobación: estos minutos dejan de pagarse (puedes volver a aprobar otra cantidad)')}
       </span>
     )
   }
 
-  if (c.extraAprobable > 0) {
-    const valor = minutos === '' ? c.extraAprobable : minutos
-    const clamped = Math.max(1, Math.min(Number(valor) || c.extraAprobable, c.extraAprobable))
-    return (
-      <span className="inline-flex items-center gap-1.5">
-        <span className="text-warn font-medium" title="Se quedó después de su salida programada — solo se paga lo que apruebes (todo o una parte)">
-          {c.extraAprobable} min
-        </span>
-        <input
-          type="number"
-          min={1}
-          max={c.extraAprobable}
-          value={valor}
-          onChange={e => setMinutos(e.target.value)}
-          onClick={e => e.stopPropagation()}
-          className="w-14 px-1.5 py-0.5 text-right text-[11px] rounded-md bg-bg-700/70 border border-warn/40 text-ink-50 focus:outline-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-warn"
-          title={`Cuántos minutos aprobar (máx. ${c.extraAprobable})`}
-          data-testid="input-min-extra"
-        />
-        <button
-          onClick={e => { e.stopPropagation(); aprobarExtra(c.extraKey, clamped); setMinutos('') }}
-          className="text-[10px] px-1.5 py-0.5 rounded-md bg-warn/15 border border-warn/40 text-warn hover:bg-warn/25 focus-visible:outline focus-visible:outline-1 focus-visible:outline-warn active:opacity-70 transition-colors font-medium"
-          title={`Aprobar ${clamped} min (se pagan completos, incluidos los primeros 15)`}
-        >Aprobar</button>
-      </span>
-    )
-  }
+  const manual = c.anomalia
+  if (!manual && !(c.extraAprobable > 0)) return <span className="text-ink-400">—</span>
 
-  return <span className="text-ink-400">—</span>
+  const maximo = manual ? MAX_EXTRA_MANUAL : c.extraAprobable
+  const valor = minutos === '' ? (c.extraSugerido || 0) : minutos
+  const aAprobar = Math.max(0, Math.min(Math.round(Number(valor) || 0), maximo))
+  return (
+    <span className="inline-flex items-center gap-1.5" data-testid={manual ? 'extra-manual' : 'extra-pendiente'}>
+      {manual
+        ? <span className="text-bad text-[10px] font-medium" title="Día con datos raros: el sistema no calcula las extras solo. Escribe cuántos minutos extra pagar además de las horas del día, o toca Denegar.">a mano</span>
+        : <span className="text-warn font-medium" title="Se quedó después de su salida programada — solo se paga lo que apruebes (todo o una parte)">{c.extraAprobable} min</span>}
+      <input
+        type="number"
+        min={0}
+        max={maximo}
+        value={valor}
+        onChange={e => setMinutos(e.target.value)}
+        onClick={e => e.stopPropagation()}
+        className="w-14 px-1.5 py-0.5 text-right text-[11px] rounded-md bg-bg-700/70 border border-warn/40 text-ink-50 focus:outline-none focus-visible:outline focus-visible:outline-1 focus-visible:outline-warn"
+        title={manual ? `Minutos extra a pagar este día (máx. ${maximo})` : `Cuántos minutos aprobar (máx. ${c.extraAprobable})`}
+        data-testid="input-min-extra"
+      />
+      <button
+        onClick={e => { e.stopPropagation(); if (aAprobar > 0) { aprobarExtra(c.extraKey, aAprobar); setMinutos('') } }}
+        disabled={aAprobar < 1}
+        className={`${BTN_CHICO} bg-warn/15 border-warn/40 text-warn hover:bg-warn/25 focus-visible:outline-warn font-medium disabled:opacity-40 disabled:cursor-not-allowed`}
+        title={aAprobar > 0 ? `Pagar ${aAprobar} min extra${manual ? '' : ' (completos, incluidos los primeros 15)'}` : 'Escribe cuántos minutos pagar'}
+      >Aprobar</button>
+      <button
+        onClick={e => { e.stopPropagation(); denegarExtra(c.extraKey); setMinutos('') }}
+        className={`${BTN_CHICO} border-white/10 text-ink-300 hover:text-bad hover:border-bad/40 focus-visible:outline-bad`}
+        title="No se paga extra este día — deja de figurar como pendiente"
+        data-testid="btn-denegar-extra"
+      >Denegar</button>
+    </span>
+  )
 }
 
-function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, modeloMensual, aprobarExtra, revertirExtra, condonarFalta, revertirCondonacionFalta }) {
+function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, modeloMensual, aprobarExtra, denegarExtra, revertirExtra, condonarFalta, revertirCondonacionFalta }) {
   // Filtro del detalle diario: qué días generaron cada descuento y por qué.
   // El componente NO se desmonta al colapsar → resetear al cerrar.
   const [filtroDetalle, setFiltroDetalle] = useState('todos')
@@ -758,9 +796,9 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, m
     { id: 'retrasos', label: `Retrasos · −Bs ${bsRetrasos}`, test: c => c.mins > 0 && c.mins <= 180 },
     { id: 'noRegistro', label: `No marcó · −Bs ${f.descuentoNoRegistro}`, test: c => c.registroIncompleto },
     { id: 'faltas', label: f.descuentoFaltas > 0 ? `Faltas · −Bs ${f.descuentoFaltas}` : `Faltas`, test: c => c.falto },
-    { id: 'extras', label: `Extras`, test: c => !c.anomalia && (c.extraAprobable > 0 || c.minExtraComputado > 0) },
+    { id: 'extras', label: `Extras`, test: c => (!c.anomalia && c.extraAprobable > 0) || c.minExtraComputado > 0 },
     { id: 'tempranas', label: `Llegó antes`, test: c => !c.anomalia && c.revisarTemprano },
-    { id: 'revisar', label: `A revisar`, test: c => c.anomalia },
+    { id: 'revisar', label: `A revisar`, test: c => c.anomalia && !c.revisado },
   ].map(cat => ({ ...cat, count: cat.id === 'todos' ? cellsVisibles.length : cellsVisibles.filter(cat.test).length }))
   const catActiva = categorias.find(c => c.id === filtroDetalle) || categorias[0]
   const cellsFiltradas = filtroDetalle === 'todos' ? cellsVisibles : cellsVisibles.filter(catActiva.test)
@@ -907,7 +945,7 @@ function FilaEmpleado({ f, abierto, onToggle, nombreLocal, rangoLabel, fuente, m
                         <td className="py-1.5 text-right font-mono text-ink-300">{row['Programado salida'] || '—'}</td>
                         <td className="py-1.5 text-right font-mono text-ink-100">{row['Salida real'] || '—'}</td>
                         <td className="py-1.5 text-right whitespace-nowrap">
-                          <CeldaExtra c={c} aprobarExtra={aprobarExtra} revertirExtra={revertirExtra} />
+                          <CeldaExtra c={c} aprobarExtra={aprobarExtra} denegarExtra={denegarExtra} revertirExtra={revertirExtra} />
                         </td>
                         <td className="py-1.5 text-right font-mono" title={c.anomalia ? 'Día anómalo: se muestran las horas PAGABLES (programadas), no las fichadas' : undefined}>
                           {c.anomalia

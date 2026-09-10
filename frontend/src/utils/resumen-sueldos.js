@@ -10,6 +10,7 @@ import {
   tardanzasConCondonacion,
 } from './stats'
 import { planillaLocal } from './payroll'
+import { fueraDeRango, diaFueraDeContrato } from '../config/employees'
 
 // Duración en horas de un horario programado "HH:MM" → "HH:MM" (maneja cruce de medianoche).
 function horasDeProgramado(startStr, endStr) {
@@ -44,6 +45,11 @@ export function resumenSueldos({
   const iniStr = format(ini, 'yyyy-MM-dd')
   const finStr = format(fin, 'yyyy-MM-dd')
 
+  // Ingresos y bajas (FECHAS_ALTA / FECHAS_BAJA): quien no trabajó ningún día
+  // del rango no entra; en el rango en que entró o se fue, los días fuera de su
+  // período no cuentan (ni como falta aunque el cuaderno lo tuviera en horario).
+  empleados = (empleados || []).filter(e => !fueraDeRango(e.id, iniStr, finStr))
+
   // 1) Celdas por persona: iterar las semanas ISO que tocan el rango y RECORTAR
   //    a días dentro de [ini, fin] y no-futuros (cada celda es autocontenida).
   const cellsPorPersona = {}
@@ -51,7 +57,7 @@ export function resumenSueldos({
   while (semanaIni <= fin) {
     const tabla = tablaSemanal({ empleados, attendance, schedules, ini: semanaIni, condonaciones, extrasAprobadas, turnos, personOverrides })
     for (const fila of tabla.filas) {
-      const keep = fila.cells.filter(c => c.dayStr >= iniStr && c.dayStr <= finStr && c.dayStr <= hoyStr)
+      const keep = fila.cells.filter(c => c.dayStr >= iniStr && c.dayStr <= finStr && c.dayStr <= hoyStr && !diaFueraDeContrato(fila.empleado.id, c.dayStr))
       if (keep.length) {
         if (!cellsPorPersona[fila.empleado.id]) cellsPorPersona[fila.empleado.id] = []
         cellsPorPersona[fila.empleado.id].push(...keep)
@@ -112,7 +118,7 @@ export function resumenSueldos({
 
     // Días sin horario cargado (no evaluables) y días con datos a revisar.
     const diasSinHorario = cells.filter(c => c.sinHorario).length
-    const diasARevisar = cells.filter(c => c.anomalia).length
+    const diasARevisar = cells.filter(c => c.anomalia && !c.revisado).length
 
     // Días anómalos (sin salida / horas absurdas): usar horas pagables (programadas)
     // en vez de las horas crudas — un "sin salida" viejo inflaría el total hasta hoy.
@@ -231,9 +237,9 @@ export function resumenSueldos({
         ? (c.dayStr < hoyStr ? horasDeProgramado(c.programadoStart, c.programadoEnd) : 0)
         : (c.horasProgramadas || 0)
       if (c.mins > 0 && c.mins <= 180) d.minTarde += c.mins
-      if (!c.anomalia) d.minExtra += c.minExtraComputado || 0
+      d.minExtra += c.minExtraComputado || 0
       if (c.falto && c.dayStr < hoyStr) d.faltas++
-      if (c.anomalia) d.aRevisar++
+      if (c.anomalia && !c.revisado) d.aRevisar++
     }
   }
   const porDia = Object.values(porDiaMap)

@@ -18,6 +18,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import dotenv from 'dotenv'
+import { format } from 'date-fns'
 import { makeJibbleClient } from '../backend/jibble-client.js'
 import { parseWorkbookTurnos } from '../frontend/src/utils/excel-turnos'
 import { esWorkbookTuesday, parseWorkbookTurnosTuesday } from '../frontend/src/utils/excel-turnos-tuesday'
@@ -25,11 +26,11 @@ import { isoWeekKey } from '../frontend/src/utils/turnos'
 import { descargarReporteMensual } from '../frontend/src/utils/reporte-mensual'
 import { resumenSueldos } from '../frontend/src/utils/resumen-sueldos'
 import { MODELO_MENSUAL_DEFAULT } from '../frontend/src/utils/payroll'
-import { parseBiometricoWorkbook, personasSinteticas, resolverPersonasBio, marcasToAttendance } from '../frontend/src/utils/biometrico'
+import { parseBiometricoWorkbook, personasSinteticas, resolverPersonasBio, marcasToAttendance, sinteticosPorAlias } from '../frontend/src/utils/biometrico'
 import { asumirSemanasFaltantes } from '../frontend/src/utils/turnos'
 import {
   GROUP_IDS, resolveGroupId, esPersonaDummy, getTarifaForPerson, getScheduleForPerson, EMPLOYEE_OVERRIDES,
-  ALIAS_TURNOS_FIJOS,
+  ALIAS_TURNOS_FIJOS, ALIAS_BIO_FIJOS, fueraDeRango,
 } from '../frontend/src/config/employees'
 import * as XLSX from 'xlsx-js-style'
 
@@ -222,6 +223,10 @@ export async function generarReportes(mesStr, raiz) {
 
     let empleados, schedules, attendance
     let aliasesTurnos = {}
+    // Gente que solo existe en el aparato pero cobra por planilla (ALIAS_BIO_FIJOS,
+    // ej. ANGELO/ANGEL de Huper): van a la planilla del BIOMÉTRICO y a los turnos,
+    // nunca a la de la App (no usan Jibble).
+    let sintBio = []
     if (local.ws == null) {
       // Local SIN Jibble: personal y asistencia salen del biométrico.
       if (!bio) {
@@ -267,8 +272,12 @@ export async function generarReportes(mesStr, raiz) {
           return { ...p, groupId }
         })
         .filter(p => p.groupId === local.groupId)
+        // Ingresos/bajas: quien no trabajó ningún día del mes no entra (FECHAS_ALTA/BAJA).
+        .filter(p => !fueraDeRango(p.id, `${mesStr}-01`, format(fin, 'yyyy-MM-dd')))
 
       console.log(`  Personal: ${empleados.length} — ${empleados.map(e => e.fullName.split(' ')[0]).join(', ')}`)
+      if (bio) sintBio = sinteticosPorAlias(local.groupId, bio.personas, ALIAS_BIO_FIJOS[local.groupId] || {}).filter(p => !fueraDeRango(p.id, `${mesStr}-01`, format(fin, 'yyyy-MM-dd')))
+      if (sintBio.length) console.log(`  Solo en el aparato (cobran por planilla): ${sintBio.map(e => e.fullName).join(', ')}`)
 
       const schedRaw = Object.fromEntries((schedulesArr || []).map(s => [s.personId, s]))
       schedules = empleados.map(p => getScheduleForPerson(p.id, schedRaw[p.id], {}))
@@ -282,7 +291,7 @@ export async function generarReportes(mesStr, raiz) {
     }
 
     // Turnos desde la carpeta OneDrive (ruido de nombres solo del mes hacia adelante)
-    const t = turnosDeCarpeta(local.carpeta, empleados, local.groupId, isoWeekKey(ini), aliasesTurnos)
+    const t = turnosDeCarpeta(local.carpeta, [...empleados, ...sintBio], local.groupId, isoWeekKey(ini), aliasesTurnos)
     console.log(`  Planillas leídas: ${t.archivos.length ? t.archivos.join(' · ') : '(ninguna)'}`)
 
     // Cobertura de semanas del mes
@@ -336,20 +345,22 @@ export async function generarReportes(mesStr, raiz) {
     // del mes): mismos horarios y reglas, pero la asistencia sale del APARATO.
     if (local.ws != null && bio) {
       const { mapa, noEncontrados } = resolverPersonasBio({
-        groupId: local.groupId, personasBio: bio.personas, empleadosJibble: empleados, aliases: {},
+        groupId: local.groupId, personasBio: bio.personas, empleadosJibble: empleados, aliases: ALIAS_BIO_FIJOS[local.groupId] || {},
       })
       if (noEncontrados.length) console.log(`  ⚠ [biométrico] Nombres del aparato sin empleado en Jibble: ${noEncontrados.join(', ')} (se excluyen — mapear en la web con la fuente Biométrico)`)
       const attendanceBio = marcasToAttendance(bio.marcas, { groupId: local.groupId, mapa })
       console.log(`  Biométrico: ${bio.archivo} · ${attendanceBio.length} días-persona con marcas`)
+      const empleadosBio = [...empleados, ...sintBio]
+      const schedulesBio = [...schedules, ...sintBio.map(p => ({ personId: p.id, expectedHoursPerWeek: 0, isDefault: true }))]
       const nombreBio = `${local.nombre} BIOMETRICO`
       const cfgBio = { ...cfg, config: { ...cfg.config, locales: { [local.groupId]: { name: nombreBio } } } }
       descargarReporteMensual({
-        empleados, attendance: attendanceBio, schedules,
+        empleados: empleadosBio, attendance: attendanceBio, schedules: schedulesBio,
         condonaciones: {}, turnos, personOverrides: {},
         mes, cfg: cfgBio, group: { id: local.groupId, name: nombreBio },
       })
       const resumenBio = resumenSueldos({
-        empleados, attendance: attendanceBio, schedules,
+        empleados: empleadosBio, attendance: attendanceBio, schedules: schedulesBio,
         condonaciones: {}, extrasAprobadas: {}, turnos, personOverrides: {},
         ini, fin, settings: cfg.config.settings, getTarifa: cfg.getTarifaResolved, groupId: local.groupId,
         modeloMensual: MODELO_MENSUAL_DEFAULT,

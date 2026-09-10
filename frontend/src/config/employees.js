@@ -181,6 +181,11 @@ export const ALIAS_TURNOS_FIJOS = {
     giussep: '0fd05836-c25d-4fc9-ad3d-97bb14524a06',         // Giuseppe Argento (typo de 3 letras, fuera del alcance del matcher)
     andy: 'IGNORAR',                                         // apoyo EXTRA, no registrado en Jibble
     nuevo: 'IGNORAR',                                        // fila placeholder del gerente
+    // Gente de Huper que solo existe en el aparato (ver ALIAS_BIO_FIJOS): el
+    // cuaderno los escribe distinto que el reloj y "ANGHELO" empataba entre
+    // Angelo y Angel. Son DOS personas (Anuar, 10-sep-2026).
+    anghelo: 'bio:c861e236-e39c-4fd1-9491-eee531249db6:37',  // ANGELO del aparato (id 37)
+    angel: 'bio:c861e236-e39c-4fd1-9491-eee531249db6:51',    // ANGEL del aparato (id 51)
   },
   [GROUP_IDS.SBARRO_AMERICA]: {
     anuar: 'IGNORAR',                                        // el dueño no entra a planilla
@@ -221,6 +226,54 @@ export const SIN_PLANILLA_APARATO = {
 
 export function esFueraDePlanilla(groupId, idBio) {
   return (SIN_PLANILLA_APARATO[groupId] || []).includes(Number(idBio))
+}
+
+// Alias FIJOS del biométrico en locales CON Jibble: personas del aparato que no
+// están en Jibble pero SÍ cobran por planilla → 'CREAR' (empleado solo
+// biométrico). Clave 'id:<idBio>' (misma que usa el panel web). Los alias que
+// el usuario guarda en la página tienen prioridad.
+export const ALIAS_BIO_FIJOS = {
+  [GROUP_IDS.SBARRO_HUPER]: {
+    'id:37': 'CREAR',   // ANGELO — cuaderno "ANGHELO", marcó 3–15 ago 2026
+    'id:51': 'CREAR',   // ANGEL — entró el 25 ago 2026
+  },
+}
+
+// Bajas: último día trabajado. Desde el día siguiente la persona no entra a la
+// planilla (ni faltas ni fila vacía), pero los meses que sí trabajó se conservan
+// — por eso no se usa "ocultar", que la borraría también de su historia.
+export const FECHAS_BAJA = {
+  '1337f853-a692-4143-9ade-4319d1cc139e': '2026-07-25', // Carlos Avila Pérez (Huper) — ya no trabaja (Anuar, 10-sep-2026)
+  'bio:c861e236-e39c-4fd1-9491-eee531249db6:37': '2026-08-15', // ANGELO (Huper, aparato id 37) — se fue el 15-ago
+}
+
+// Ingresos: primer día trabajado. Los días ANTERIORES no cuentan (ni como falta
+// aunque el cuaderno ya lo tuviera en el horario — caso real: el gerente puso a
+// ANGEL desde el 18-ago y empezó el 25).
+export const FECHAS_ALTA = {
+  'bio:c861e236-e39c-4fd1-9491-eee531249db6:51': '2026-08-25', // ANGEL (Huper, aparato id 51)
+}
+
+export const fechaBaja = personId => FECHAS_BAJA[personId] || null
+export const fechaAlta = personId => FECHAS_ALTA[personId] || null
+
+// true si la persona ya se había ido ANTES de este día (yyyy-MM-dd).
+export function dadoDeBajaAntesDe(personId, diaStr) {
+  const baja = FECHAS_BAJA[personId]
+  return !!baja && baja < diaStr
+}
+
+// true si la persona NO trabajó en ningún día del rango [iniStr, finStr]:
+// se fue antes de que empiece o entró después de que termine.
+export function fueraDeRango(personId, iniStr, finStr) {
+  const alta = FECHAS_ALTA[personId]
+  return dadoDeBajaAntesDe(personId, iniStr) || (!!alta && alta > finStr)
+}
+
+// true si ese día (yyyy-MM-dd) está fuera de su período de trabajo.
+export function diaFueraDeContrato(personId, diaStr) {
+  const baja = FECHAS_BAJA[personId], alta = FECHAS_ALTA[personId]
+  return (!!baja && diaStr > baja) || (!!alta && diaStr < alta)
 }
 
 // Locales SIN cuenta Jibble: su personal existe SOLO en el biométrico físico

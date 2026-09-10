@@ -102,7 +102,11 @@ export async function correr() {
     // horario del cuaderno se aplica a Fabiola Rojas en TODAS las semanas y
     // entra a las 08:00 — no el default viejo de la tarde. ──
     const semanasFabiola = semanas.filter(wk => total.aplicarPorSemana[wk]?.[ROJAS])
-    check(`Fabiola Rojas tiene horario en las 8 semanas (${semanasFabiola.length})`, semanasFabiola.length === 8)
+    // La carpeta crece cada mes (sep-2026 ya trae el cuaderno de septiembre):
+    // exigir al menos julio y agosto completos (W27..W34).
+    const julAgo = ['2026-W27', '2026-W28', '2026-W29', '2026-W30', '2026-W31', '2026-W32', '2026-W33', '2026-W34']
+    check(`Fabiola Rojas tiene horario en todo julio y agosto (${semanasFabiola.length} semanas)`,
+      julAgo.every(wk => semanasFabiola.includes(wk)), semanasFabiola.join(','))
     const diasF = [1, 2, 3, 4, 5, 6, 7].map(d => dia('2026-W33', ROJAS, d))
     console.log('  · Fabiola W33:', diasF.map((t, i) => `${['L', 'M', 'X', 'J', 'V', 'S', 'D'][i]}=${t || '—'}`).join(' '))
     check('Fabiola lunes W33 = 08:00-23:00 (turno largo del cuaderno)', diasF[0] === '08:00-23:00', diasF[0])

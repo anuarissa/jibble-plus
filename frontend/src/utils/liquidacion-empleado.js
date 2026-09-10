@@ -90,9 +90,11 @@ export function exportLiquidacionEmpleado({ fila, nombreLocal, rangoLabel, fuent
         'Multa (Bs)': multa ? -multa : '',
         'Prog. salida': row['Programado salida'] || '—',
         'Salida real': row['Salida real'] || '—',
-        'Extra aprobado (min)': (!c.anomalia && c.minExtraComputado > 0) ? c.minExtraComputado : '',
-        // Pendiente = lo aprobable menos lo ya aprobado (cubre aprobaciones parciales)
-        'Por aprobar (min)': (!c.anomalia && (c.extraAprobable || 0) - (c.minExtraComputado || 0) > 0) ? (c.extraAprobable - (c.minExtraComputado || 0)) : '',
+        // En días anómalos solo hay extra si Anuar lo aprobó a mano.
+        'Extra aprobado (min)': c.minExtraComputado > 0 ? c.minExtraComputado : '',
+        // Pendiente = lo aprobable menos lo ya aprobado (cubre aprobaciones parciales);
+        // lo denegado ya no está pendiente.
+        'Por aprobar (min)': (!c.anomalia && !c.extraDenegada && (c.extraAprobable || 0) - (c.minExtraComputado || 0) > 0) ? (c.extraAprobable - (c.minExtraComputado || 0)) : '',
         'Horas pagadas': c.falto ? 0 : r2(c.anomalia ? (c.horasPagables || 0) : (c.horas || 0)),
         'No-registro (Bs)': noReg ? -noReg : '',
         'Falta (Bs)': faltaDelDia(c) ? -faltaDelDia(c) : '',

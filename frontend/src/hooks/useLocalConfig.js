@@ -274,6 +274,12 @@ export function useLocalConfig() {
     setExtrasAprobadas(e => ({ ...e, [attendanceId]: { aprobada: true, minutos, fecha: new Date().toISOString() } }))
   }, [])
 
+  // "No se paga": el día deja de figurar como pendiente / a revisar. Se deshace
+  // con revertirExtra (misma clave).
+  const denegarExtra = useCallback((attendanceId) => {
+    setExtrasAprobadas(e => ({ ...e, [attendanceId]: { denegada: true, fecha: new Date().toISOString() } }))
+  }, [])
+
   const revertirExtra = useCallback((attendanceId) => {
     setExtrasAprobadas(e => {
       const next = { ...e }
@@ -325,6 +331,7 @@ export function useLocalConfig() {
     condonar,
     revertirCondonacion,
     aprobarExtra,
+    denegarExtra,
     revertirExtra,
     reset,
   }
