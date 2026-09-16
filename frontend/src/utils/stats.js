@@ -181,9 +181,12 @@ function resolverDiaPartido({ segments, fichajesDelDia, condonaciones, extrasApr
 
   // Horas reales = suma de duraciones de cada sesión (sin contar el hueco entre tramos)
   let horas = 0
+  const esHoy = dayStr === format(new Date(), 'yyyy-MM-dd')
   for (const s of sesiones) {
     if (s.clockIn && s.clockOut) horas += (new Date(s.clockOut) - new Date(s.clockIn)) / 3600000
-    else if (s.clockIn && !s.clockOut) horas += (new Date() - new Date(s.clockIn)) / 3600000
+    // Tramo sin cerrar: solo se estima si es HOY (ver resolverDia) — en días
+    // pasados contar "hasta ahora" daba horas imposibles.
+    else if (s.clockIn && !s.clockOut && esHoy) horas += (new Date() - new Date(s.clockIn)) / 3600000
   }
 
   // Horas programadas = suma de los tramos
@@ -425,8 +428,13 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, extrasAproba
   if (tieneEntrada && tieneSalida) {
     horas = (new Date(fich.clockOut) - new Date(fich.clockIn)) / 3600000
   } else if (tieneEntrada && !tieneSalida) {
-    // fichando ahora (sin cerrar): estimación hasta el momento actual (puede inflarse)
-    horas = (new Date() - new Date(fich.clockIn)) / 3600000
+    // Sin cerrar: solo tiene sentido estimar si es HOY (está trabajando ahora).
+    // En días pasados el fichaje quedó abierto y contar "hasta ahora" daba horas
+    // imposibles que CRECÍAN cada día (un 8-ago con 900 h en el reporte de
+    // septiembre). Esos días se pagan por horario programado (horasPagables).
+    horas = dayStr === format(new Date(), 'yyyy-MM-dd')
+      ? (new Date() - new Date(fich.clockIn)) / 3600000
+      : 0
   }
 
   // REGLAS DE LA CASA (Anuar, ago-2026):

@@ -237,6 +237,13 @@ export const ALIAS_BIO_FIJOS = {
     'id:37': 'CREAR',   // ANGELO — cuaderno "ANGHELO", marcó 3–15 ago 2026
     'id:51': 'CREAR',   // ANGEL — entró el 25 ago 2026
   },
+  [GROUP_IDS.SBARRO_AMERICA]: {
+    // La huella 31 es Fabiola Rojas (Anuar, 16-sep-2026). Sin esto sus ~214 h de
+    // agosto no se pagaban y le salían 27 faltas falsas: en Jibble hay dos
+    // Fabiolas y el matcher no puede elegir sola.
+    'id:31': '93a65596-276e-4b8b-93bd-56d0017621ca',
+    'id:40': 'CREAR',   // LUCIANA — solo existe en el aparato (decisión de Anuar 19-ago-2026)
+  },
 }
 
 // Bajas: último día trabajado. Desde el día siguiente la persona no entra a la
