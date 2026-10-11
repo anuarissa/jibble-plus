@@ -186,10 +186,21 @@ export const ALIAS_TURNOS_FIJOS = {
     // Angelo y Angel. Son DOS personas (Anuar, 10-sep-2026).
     anghelo: 'bio:c861e236-e39c-4fd1-9491-eee531249db6:37',  // ANGELO del aparato (id 37)
     angel: 'bio:c861e236-e39c-4fd1-9491-eee531249db6:51',    // ANGEL del aparato (id 51)
+    brenda: 'bio:c861e236-e39c-4fd1-9491-eee531249db6:1',    // BRENDA del aparato (id 1), desde sep-2026
+    // ALONDRA se pasó de la América al Huper el 21-sep-2026 pero todavía no
+    // tiene huella en este aparato ni ficha en esta cuenta de Jibble: sin esto
+    // el cuaderno le generaría faltas por días que nadie puede medir.
+    alondra: 'IGNORAR',
   },
   [GROUP_IDS.SBARRO_AMERICA]: {
     anuar: 'IGNORAR',                                        // el dueño no entra a planilla
     fabiola: '93a65596-276e-4b8b-93bd-56d0017621ca',         // Fabiola Rojas (la cajera AM del cuaderno; Nava también existe en Jibble → ambigüedad)
+    angel: 'bio:3ab9e1ac-b61b-462e-9322-b5575e710fac:3',     // ANGEL del aparato (id 3), vino del Huper en sep-2026
+    // MATIAS: el cuaderno lo programa todas las semanas 18:00-23:00 pero solo
+    // lo llaman días sueltos (4 en sep-2026, Anuar 11-oct) → sin horario fijo:
+    // cobra las horas que marca y no se le cuentan faltas por días que nadie
+    // esperaba que viniera. Si pasa a turno fijo, apuntarlo a su id del aparato.
+    matias: 'IGNORAR',
   },
   [GROUP_IDS.SOS_POLLO]: {
     // Puestos SIN persona fija en el cuaderno del gerente: esa gente se paga al
@@ -218,6 +229,10 @@ export function nombreDeAparato(groupId, idBio, nombreOriginal) {
 // que se pagan al día. Sus marcas no entran a la planilla del local ni figuran
 // como empleados. { [groupId]: [idBio...] }
 export const SIN_PLANILLA_APARATO = {
+  [GROUP_IDS.SBARRO_HUPER]: [
+    16,   // VLADY — cubre-turnos, no cobra por planilla
+    17,   // ANUAR — la huella del dueño (marcó 1 vez en sep)
+  ],
   [GROUP_IDS.SOS_POLLO]: [
     29,   // VLADY (1 día en julio) — no cubre sueldo (Anuar, 21-ago-2026)
     55,   // ALEJANDRO (7 días en julio) — íd.
@@ -235,7 +250,8 @@ export function esFueraDePlanilla(groupId, idBio) {
 export const ALIAS_BIO_FIJOS = {
   [GROUP_IDS.SBARRO_HUPER]: {
     'id:37': 'CREAR',   // ANGELO — cuaderno "ANGHELO", marcó 3–15 ago 2026
-    'id:51': 'CREAR',   // ANGEL — entró el 25 ago 2026
+    'id:51': 'CREAR',   // ANGEL — entró el 25 ago 2026, se fue a la América el 21 sep
+    'id:1': 'CREAR',    // BRENDA — entró el 23 sep 2026 (reemplaza a Angel)
   },
   [GROUP_IDS.SBARRO_AMERICA]: {
     // La huella 31 es Fabiola Rojas (Anuar, 16-sep-2026). Sin esto sus ~214 h de
@@ -243,6 +259,8 @@ export const ALIAS_BIO_FIJOS = {
     // Fabiolas y el matcher no puede elegir sola.
     'id:31': '93a65596-276e-4b8b-93bd-56d0017621ca',
     'id:40': 'CREAR',   // LUCIANA — solo existe en el aparato (decisión de Anuar 19-ago-2026)
+    'id:3': 'CREAR',    // ANGEL — el mismo que trabajaba en Huper: se vino el 22 sep 2026
+    'id:2': 'CREAR',    // MATIAS — por fin tiene huella; trabajó 4 días de sep (Anuar, 11-oct)
   },
 }
 
@@ -252,6 +270,11 @@ export const ALIAS_BIO_FIJOS = {
 export const FECHAS_BAJA = {
   '1337f853-a692-4143-9ade-4319d1cc139e': '2026-07-25', // Carlos Avila Pérez (Huper) — ya no trabaja (Anuar, 10-sep-2026)
   'bio:c861e236-e39c-4fd1-9491-eee531249db6:37': '2026-08-15', // ANGELO (Huper, aparato id 37) — se fue el 15-ago
+  // Septiembre 2026: ALONDRA y ANGEL se cambiaron de local a mitad de mes
+  // (Anuar, 11-oct-2026). Cada local paga solo su parte; sin estas fechas les
+  // caerían Bs 110 de falta por cada día posterior a su salida.
+  '46d4b11d-3837-45ed-9d1c-5cd3070b3fd5': '2026-09-20', // Alondra Sbarro — dejó la América y se fue al Huper
+  'bio:c861e236-e39c-4fd1-9491-eee531249db6:51': '2026-09-21', // ANGEL en Huper — se fue a la América
 }
 
 // Ingresos: primer día trabajado. Los días ANTERIORES no cuentan (ni como falta
@@ -259,6 +282,8 @@ export const FECHAS_BAJA = {
 // ANGEL desde el 18-ago y empezó el 25).
 export const FECHAS_ALTA = {
   'bio:c861e236-e39c-4fd1-9491-eee531249db6:51': '2026-08-25', // ANGEL (Huper, aparato id 51)
+  'bio:3ab9e1ac-b61b-462e-9322-b5575e710fac:3': '2026-09-22',  // ANGEL en la América (vino del Huper)
+  'bio:c861e236-e39c-4fd1-9491-eee531249db6:1': '2026-09-23',  // BRENDA (Huper)
 }
 
 export const fechaBaja = personId => FECHAS_BAJA[personId] || null

@@ -67,9 +67,15 @@ export async function correr() {
     .some(sem => Object.values(sem).some(dias => Object.values(dias).some(c => c?.segments?.length > 1)))
   check('nadie recibe turnos dobles inventados', !hayDobles)
 
-  // Gente del cuaderno que no marcó en julio: se informa, NUNCA se crea sola.
-  const noMarcaron = r.noEncontrados.filter(n => /ANNA|SHARUK|JHULIANA|ELENA/i.test(n))
-  check(`los que no marcaron solo se informan (${noMarcaron.join(', ')})`, noMarcaron.length === 4)
+  // Gente del cuaderno que no marcó en el aparato: se informa, NUNCA se crea
+  // sola. La lista cambia cada vez que el gerente edita el cuaderno (lo hizo el
+  // 1-oct-2026), así que se comprueba la REGLA, no los nombres de un día:
+  // ninguno de los pendientes puede haberse convertido en empleado.
+  const idsEmpleados = new Set(empleados.map(e => e.id))
+  check(`los que no marcaron solo se informan (${r.noEncontrados.join(', ') || 'ninguno'})`,
+    r.noEncontrados.every(n => !idsEmpleados.has(n)))
+  check('nadie del cuaderno sin huella recibió turnos',
+    !Object.values(r.aplicarPorSemana).some(sem => Object.keys(sem).some(pid => !idsEmpleados.has(pid))))
 
   // ── Cubre-turnos que se pagan al día (VLADY id 29, ALEJANDRO id 55): marcan
   // en el aparato pero NO entran a la planilla de SOS. ──

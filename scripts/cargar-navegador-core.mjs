@@ -119,7 +119,11 @@ export async function armarSeed(mesStr, raiz) {
         .filter(p => EMPLOYEE_OVERRIDES[p.id]?.skip !== true)
         .map(p => ({ ...p, groupId: resolveGroupId(p.id, p.groupId, {}, 'A', p.fullName) }))
         .filter(p => p.groupId === GROUP_IDS.SBARRO_AMERICA)
-      const tA = turnosDeCarpeta(CARPETA_HORARIOS_AMERICA, empAme, GROUP_IDS.SBARRO_AMERICA, isoWeekKey(ini))
+      // + gente que solo existe en el aparato pero cobra por planilla (ANGEL,
+      // MATIAS, LUCIANA). Sin ellos, "ANGEL" del cuaderno se parecía a "AXEL"
+      // (Levenshtein 2) y sus turnos terminaban en la ficha equivocada.
+      const sintAme = bioAme ? sinteticosPorAlias(GROUP_IDS.SBARRO_AMERICA, bioAme.personas, ALIAS_BIO_FIJOS[GROUP_IDS.SBARRO_AMERICA] || {}) : []
+      const tA = turnosDeCarpeta(CARPETA_HORARIOS_AMERICA, [...empAme, ...sintAme], GROUP_IDS.SBARRO_AMERICA, isoWeekKey(ini))
       mergeTurnos(tA.aplicarPorSemana)
       resumen.push(`SBARRO AMERICA: turnos ${Object.keys(tA.aplicarPorSemana).length} semanas de ${tA.archivos.length} planillas · ${empAme.length} empleados`)
       if (tA.noEncontrados.length) resumen.push(`SBARRO AMERICA: nombres del Excel sin resolver: ${tA.noEncontrados.join(', ')}`)

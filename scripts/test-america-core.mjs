@@ -36,6 +36,12 @@ const EMP = [
   { id: 'jhon', fullName: 'Jhon Diaz' },
   { id: 'cae', fullName: 'Cae Aranibar Delgadillo' },
   { id: 'fabiolaN', fullName: 'Fabiola Nava' },
+  // Gente que solo existe en el aparato pero cobra por planilla (ALIAS_BIO_FIJOS):
+  // sin ellos en la lista, "ANGEL" del cuaderno se parecía a "AXEL" (Levenshtein 2)
+  // y el parser les fusionaba los turnos.
+  { id: personaSinteticaId(GROUP_IDS.SBARRO_AMERICA, 3), fullName: 'Angel', synthetic: true },
+  { id: personaSinteticaId(GROUP_IDS.SBARRO_AMERICA, 2), fullName: 'Matias', synthetic: true },
+  { id: personaSinteticaId(GROUP_IDS.SBARRO_AMERICA, 40), fullName: 'Luciana', synthetic: true },
 ]
 // Los mismos alias fijos que usan la web y el CLI (fuente única).
 const ALIASES_TURNOS = ALIAS_TURNOS_FIJOS[G]
@@ -94,8 +100,14 @@ export async function correr() {
     check('julio y agosto cubiertos (W27..W34)',
       ['2026-W27', '2026-W30', '2026-W31', '2026-W34'].every(w => semanas.includes(w)), semanas.join(','))
     check('W33 con 8+ personas', Object.keys(total.aplicarPorSemana['2026-W33'] || {}).length >= 8)
-    check('MATIAS se reporta como no encontrado', [...total.noEncontrados].some(n => /MATIAS/i.test(n)),
+    // MATIAS ya tiene huella desde sep-2026 y está enlazado (ALIAS_TURNOS_FIJOS).
+    check('ya no queda ningún nombre del cuaderno sin resolver', total.noEncontrados.size === 0,
       [...total.noEncontrados].join(','))
+    check('ANGEL del cuaderno va al empleado del aparato, NO a Axel',
+      ['2026-W39', '2026-W40'].every(wk => {
+        const sem = total.aplicarPorSemana[wk] || {}
+        return !!sem[personaSinteticaId(GROUP_IDS.SBARRO_AMERICA, 3)]
+      }))
     check('ninguna celda ignorada', total.celdasIgnoradas === 0, `${total.celdasIgnoradas} ignoradas`)
 
     // ── FABIOLA (el bug que reportó Anuar): con el alias fijo compartido, su
