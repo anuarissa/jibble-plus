@@ -5,9 +5,7 @@
 import path from 'node:path'
 import dotenv from 'dotenv'
 import { makeJibbleClient } from '../backend/jibble-client.js'
-import {
-  turnosDeCarpeta, bioDeCarpeta, ALIAS_GERENTE_TUESDAY, TUESDAY_SIN_BIOMETRICO,
-} from './reporte-mensual-core.mjs'
+import { turnosDeCarpeta, bioDeCarpeta } from './reporte-mensual-core.mjs'
 import { personasSinteticas, sinteticosPorAlias } from '../frontend/src/utils/biometrico'
 import { isoWeekKey } from '../frontend/src/utils/turnos'
 import { GROUP_IDS, resolveGroupId, esPersonaDummy, EMPLOYEE_OVERRIDES, ALIAS_BIO_FIJOS } from '../frontend/src/config/employees'
@@ -39,11 +37,10 @@ export async function armarSeed(mesStr, raiz) {
   if (bioTue) {
     bioStore[GROUP_IDS.TUESDAY] = { [mesStr]: { marcas: bioTue.marcas, personas: bioTue.personas, ts: Date.now(), archivo: bioTue.archivo } }
     const empTue = personasSinteticas(GROUP_IDS.TUESDAY, bioTue.personas)
-    const porBio = Object.fromEntries(empTue.map(e => [e.idBio, e.id]))
-    const aliases = {}
-    for (const [nom, idBio] of Object.entries(ALIAS_GERENTE_TUESDAY)) if (porBio[idBio]) aliases[nom] = porBio[idBio]
-    for (const nom of TUESDAY_SIN_BIOMETRICO) aliases[nom] = 'IGNORAR'
-    const t = turnosDeCarpeta(CARPETA_CUADERNOS_TUESDAY, empTue, GROUP_IDS.TUESDAY, isoWeekKey(ini), aliases)
+    // Los alias del cuaderno de Tuesday (GABRIELA, ALEJA NDRA, KATY, gente sin
+    // huella...) viven en ALIAS_TURNOS_FIJOS, fuente única web+CLI: turnosDeCarpeta
+    // ya los aplica por groupId.
+    const t = turnosDeCarpeta(CARPETA_CUADERNOS_TUESDAY, empTue, GROUP_IDS.TUESDAY, isoWeekKey(ini))
     mergeTurnos(t.aplicarPorSemana)
     resumen.push(`TUESDAY: bio ${bioTue.archivo} (${bioTue.personas.length} personas) · turnos ${Object.keys(t.aplicarPorSemana).length} semanas de ${t.archivos.length} cuadernos`)
   } else {

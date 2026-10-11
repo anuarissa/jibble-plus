@@ -82,5 +82,29 @@ export async function correr() {
   const f3 = r3.filas[0]
   check(`condonar el miércoles quita sus Bs 30 → multa ${f3.multaBs}`, f3.multaBs === 20)
 
+  console.log('═══ Vino en su día libre (Anuar, 11-oct-2026: se le pagan las horas) ═══')
+  // El cuaderno dio el lunes y el martes por LIBRES y la persona vino igual. Antes
+  // esos días pagaban 0 h (Bs 2.429 perdidos solo en Tuesday de sep-2026).
+  const e2 = { id: 'e2', fullName: 'Prueba Dos' }
+  const off = { tipo: 'OFF' }
+  const rL = resumenSueldos({
+    ...base,
+    condonaciones: {},
+    empleados: [e2],
+    attendance: [
+      { id: 'l-lun', personId: 'e2', date: '2026-07-06', clockIn: bol(6, '08:00'), clockOut: bol(6, '16:00') },
+      { id: 'l-mar', personId: 'e2', date: '2026-07-07', clockIn: bol(7, '08:00'), clockOut: null },
+    ],
+    schedules: [{ personId: 'e2', expectedHoursPerWeek: 40 }],
+    turnos: { '2026-W28': { e2: { 1: off, 2: off, 3: off, 4: off, 5: off } } },
+  })
+  const fL = rL.filas[0]
+  check(`día libre con entrada y salida: se pagan sus 8 h → ${fL.horasPagables}`, Math.abs(fL.horasPagables - 8) < 0.01)
+  check(`bruto = 8 h × 13,75 = Bs 110 → ${fL.bruto}`, Math.abs(fL.bruto - 110) < 0.01)
+  check(`día libre sin salida: no se estima (quedó en las 8 h del lunes) y se marca para revisar (${fL.diasARevisar})`, fL.diasARevisar >= 1)
+  check(`venir en día libre no genera falta ni multa (${fL.diasFalta} / ${fL.multaBs})`, fL.diasFalta === 0 && fL.multaBs === 0)
+  check(`ni no-registro por no cerrar el fichaje → Bs ${fL.descuentoNoRegistro}`, fL.descuentoNoRegistro === 0)
+  check(`los 2 días se informan como "vino en día libre" → ${fL.diasLibreTrabajado}`, fL.diasLibreTrabajado === 2)
+
   return fallos
 }

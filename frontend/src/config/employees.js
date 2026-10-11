@@ -208,6 +208,40 @@ export const ALIAS_TURNOS_FIJOS = {
     'x/despacho': 'IGNORAR',
     'x/mesas': 'IGNORAR',
   },
+  // TUESDAY: local solo-biométrico. El gerente escribe los nombres a su manera (y
+  // hasta mete dos personas en una fila), así que estos alias son los que evitan
+  // faltas falsas: 32 días (Bs 3.520) en sep-2026. Antes vivían solo en
+  // scripts/reporte-mensual-core (ALIAS_GERENTE_TUESDAY / TUESDAY_SIN_BIOMETRICO) y
+  // la web no los tenía — el mismo origen del bug de Fabiola.
+  [GROUP_IDS.TUESDAY]: {
+    gabriela: 'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:52',  // GABY del aparato (id 52)
+    // "ALEJA NDRA" (fila AM 11:30-15:30) y "ALEJANDRA" (fila PM 19:00-23:00) son la
+    // MISMA persona con turno partido (sus marcas son 11:19 → 23:03). Sin esto la
+    // mitad AM caía en ALE (id 3, que marcó 1 día) → 17 faltas falsas en sep-2026 y
+    // Alejandra cobraba medio turno. El parser prueba el nombre sin espacios.
+    alejandra: 'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:84',
+    // El gerente la escribe "KATTY" y "KATY"; en el aparato es KATHY (id 1). Estaba
+    // en la lista de "sin huella" → su horario se ignoraba y sus 17 días de sep
+    // cobraban sin nada contra lo que medir.
+    katty: 'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:1',
+    katy: 'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:1',
+    // Fila con DOS personas: su tramo PM 16:00-23:59 es de Fernando (sin huella) y
+    // caía en DANZ, que trabaja de mañana (07:56 → 16:04) → ventana pagable de 4
+    // minutos por 8 h trabajadas. Pedirle al gerente que separe la fila.
+    'fernando / danz': 'IGNORAR',
+    // Gente del cuaderno sin huella en el aparato: se informa, no cobra por la app.
+    // "KENY" no es Kevin — Kevin tiene sus propias filas y cuadra 25/25 días.
+    fernando: 'IGNORAR',
+    'fernando ticona': 'IGNORAR',
+    pedro: 'IGNORAR',
+    israel: 'IGNORAR',
+    'extra/israel': 'IGNORAR',
+    daniel: 'IGNORAR',
+    keny: 'IGNORAR',
+    luis: 'IGNORAR',
+    laura: 'IGNORAR',
+    nuevo: 'IGNORAR',
+  },
 }
 
 // Gente del aparato biométrico registrada con un nombre que NO es el suyo (lo
@@ -229,6 +263,9 @@ export function nombreDeAparato(groupId, idBio, nombreOriginal) {
 // que se pagan al día. Sus marcas no entran a la planilla del local ni figuran
 // como empleados. { [groupId]: [idBio...] }
 export const SIN_PLANILLA_APARATO = {
+  [GROUP_IDS.TUESDAY]: [
+    21,   // ANUAR — la huella del dueño (marcó 1 vez en sep-2026)
+  ],
   [GROUP_IDS.SBARRO_HUPER]: [
     16,   // VLADY — cubre-turnos, no cobra por planilla
     17,   // ANUAR — la huella del dueño (marcó 1 vez en sep)
@@ -268,6 +305,12 @@ export const ALIAS_BIO_FIJOS = {
 // planilla (ni faltas ni fila vacía), pero los meses que sí trabajó se conservan
 // — por eso no se usa "ocultar", que la borraría también de su historia.
 export const FECHAS_BAJA = {
+  // TUESDAY, septiembre 2026 (Anuar, 11-oct): cuatro salidas en el mes. Sin estas
+  // fechas el cuaderno les sigue generando faltas de Bs 110 por día.
+  'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:84': '2026-09-13', // ALEJANDRA (aparato id 84)
+  'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:30': '2026-09-15', // JUAN (id 30)
+  'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:2': '2026-09-21',  // ITALO (id 2)
+  'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:78': '2026-09-27', // JHILDA (id 78) — solo 3 días en el mes
   '1337f853-a692-4143-9ade-4319d1cc139e': '2026-07-25', // Carlos Avila Pérez (Huper) — ya no trabaja (Anuar, 10-sep-2026)
   'bio:c861e236-e39c-4fd1-9491-eee531249db6:37': '2026-08-15', // ANGELO (Huper, aparato id 37) — se fue el 15-ago
   // Septiembre 2026: ALONDRA y ANGEL se cambiaron de local a mitad de mes
@@ -281,6 +324,14 @@ export const FECHAS_BAJA = {
 // aunque el cuaderno ya lo tuviera en el horario — caso real: el gerente puso a
 // ANGEL desde el 18-ago y empezó el 25).
 export const FECHAS_ALTA = {
+  // TUESDAY, septiembre 2026: KATTY entró el 7 y los cuatro nuevos empezaron a
+  // marcar el 21-22. JANETH figuraba en el cuaderno desde el 7 como lavaplatos pero
+  // entró el 22 (Anuar, 11-oct-2026) → esas 9 faltas no eran suyas.
+  'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:1': '2026-09-07',  // KATHY (id 1)
+  'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:3': '2026-09-21',  // ALE (id 3) — marcó 1 día
+  'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:5': '2026-09-22',  // JANETH (id 5)
+  'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:6': '2026-09-22',  // DANZ (id 6)
+  'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:7': '2026-09-22',  // PAULO (id 7)
   'bio:c861e236-e39c-4fd1-9491-eee531249db6:51': '2026-08-25', // ANGEL (Huper, aparato id 51)
   'bio:3ab9e1ac-b61b-462e-9322-b5575e710fac:3': '2026-09-22',  // ANGEL en la América (vino del Huper)
   'bio:c861e236-e39c-4fd1-9491-eee531249db6:1': '2026-09-23',  // BRENDA (Huper)

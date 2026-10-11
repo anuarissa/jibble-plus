@@ -134,12 +134,6 @@ export function turnosDeCarpeta(carpeta, empleados, groupId, desdeSemana, aliase
   return out
 }
 
-// Nombres del cuaderno de Tuesday que el matcher no resuelve contra el biométrico:
-// GABRIELA = GABY (id 52); el resto no tiene marcas en el aparato → IGNORAR (salen
-// listados igual en el cuadre para revisión).
-export const ALIAS_GERENTE_TUESDAY = { gabriela: 52 }
-export const TUESDAY_SIN_BIOMETRICO = ['pedro', 'israel', 'fernando ticona', 'fernando', 'daniel', 'katty']
-
 // Busca exports del biométrico (nombre con "biometrico", .xls/.xlsx) en la carpeta
 // y sus subcarpetas (1 nivel — Tuesday los guarda en "<NN MES> SUELDOS 2026\").
 // Devuelve { marcas, personas, archivo } del MES pedido (archivo más nuevo gana) o null.
@@ -240,11 +234,6 @@ export async function generarReportes(mesStr, raiz) {
       const { mapa } = resolverPersonasBio({ groupId: local.groupId, personasBio: bio.personas })
       attendance = marcasToAttendance(bio.marcas, { groupId: local.groupId, mapa })
       console.log(`  Personal: ${empleados.length} — ${empleados.map(e => e.fullName.split(' ')[0]).join(', ')}`)
-      if (local.groupId === GROUP_IDS.TUESDAY) {
-        const porBio = Object.fromEntries(empleados.map(e => [e.idBio, e.id]))
-        for (const [nom, idBio] of Object.entries(ALIAS_GERENTE_TUESDAY)) if (porBio[idBio]) aliasesTurnos[nom] = porBio[idBio]
-        for (const nom of TUESDAY_SIN_BIOMETRICO) aliasesTurnos[nom] = 'IGNORAR'
-      }
     } else {
       const cred = cuentas[local.ws]
       if (!cred) {

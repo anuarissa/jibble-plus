@@ -75,6 +75,7 @@ export function descargarReporteMensual({
 
   // === MÉTRICAS GLOBALES ===
   let totalFichados = 0, totalFaltas = 0, totalATiempo = 0, totalDiasLibres = 0, totalHoras = 0
+  let totalLibreTrabajado = 0, horasLibreTrabajado = 0
   for (const fila of data.filas) {
     for (const c of fila.cells) {
       if (c.falto) totalFaltas++
@@ -82,6 +83,7 @@ export function descargarReporteMensual({
         totalFichados++
         totalHoras += c.horas || 0
         if (c.motivoColor === 'aTiempo') totalATiempo++
+        if (c.motivoColor === 'diaLibreTrabajado') { totalLibreTrabajado++; horasLibreTrabajado += c.horas || 0 }
       } else if (c.state === 'idle') totalDiasLibres++
     }
   }
@@ -134,6 +136,10 @@ export function descargarReporteMensual({
     { Campo: 'Días fichados (total)', Valor: totalFichados },
     { Campo: 'Faltas (no fichó)', Valor: totalFaltas },
     { Campo: 'Días libres', Valor: totalDiasLibres },
+    // Días que el cuaderno dio por libres pero la persona vino igual: desde
+    // oct-2026 esas horas SÍ se pagan (antes quedaban en 0).
+    { Campo: 'Vino en día libre (días)', Valor: totalLibreTrabajado },
+    { Campo: 'Vino en día libre (horas pagadas)', Valor: horasLibreTrabajado.toFixed(2) },
     { Campo: '', Valor: '' },
     { Campo: '— PUNTUALIDAD —', Valor: '' },
     { Campo: '% A tiempo', Valor: `${pctPuntualidad.toFixed(1)}%` },

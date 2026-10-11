@@ -354,7 +354,11 @@ function resolverDia({ emp, day, fichajesEmp, sched, condonaciones, extrasAproba
       salidaState: fich.clockOut ? null : 'sinSalida',
       minSalidaDiff: null,
       horasProgramadas: 0,
-      horasPagables: 0,
+      // Si vino en su día libre se le pagan las horas que marcó (Anuar, 11-oct-2026).
+      // Antes pagaba 0: cuando el gerente anotaba LIBRE y la persona igual trabajaba,
+      // ese día se perdía (153 h = Bs 2.429 solo en Tuesday de sep-2026). Mismo
+      // criterio que el día sin horario cargado: registro incompleto → 0 + anomalía.
+      horasPagables: dudosoLibre ? 0 : horasLibre,
       anomalia: dudosoLibre,
       motivoColor: 'diaLibreTrabajado',
       turnoCustom: false,
