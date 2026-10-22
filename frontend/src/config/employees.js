@@ -107,7 +107,7 @@ export const EMPLOYEE_OVERRIDES = {
       '7': { startTime: '16:00', endTime: '23:00' },
     },
   },
-  // === SOS POLLO · gente del kiosco de Jibble (21-oct-2026) ===
+  // === SOS POLLO · gente del kiosco de Jibble (plantilla real al 22-oct-2026) ===
   // Creados en la cuenta Principal para fichar en el celular del local en modo
   // quiosco (nombre + PIN de 4 dígitos). El plan gratis ya no deja asignar grupo
   // (Groups es Premium), así que sin este groupId caerían en SBARRO AMÉRICA.
@@ -117,12 +117,14 @@ export const EMPLOYEE_OVERRIDES = {
   // Jibble" y deja de crear los sintéticos del aparato → se perdería el
   // histórico de julio/agosto. El día que SOS cobre por los fichajes del kiosco:
   // quitar skip y sacar SOS_POLLO de GRUPOS_SOLO_BIOMETRICO.
-  '51126b10-560a-4adc-8d28-f433ffb6b36e': { nombre: 'Nicolas Bernardo', groupId: GROUP_IDS.SOS_POLLO, skip: true },  // PIN 1981
-  'f31b0ccb-d682-47fa-83e1-de277b8b5d18': { nombre: 'Carla', groupId: GROUP_IDS.SOS_POLLO, skip: true },             // PIN 9861
-  '9d7a088d-8d2a-4e0c-9d46-b3f932ccae97': { nombre: 'Jhasilma', groupId: GROUP_IDS.SOS_POLLO, skip: true },          // PIN 3406
-  '13ff952c-8e97-4eac-82a3-6656fa9694e4': { nombre: 'Jonathan', groupId: GROUP_IDS.SOS_POLLO, skip: true },          // PIN 7969
-  '4d6b8912-96ba-440d-8e23-461a0b345f60': { nombre: 'Romina', groupId: GROUP_IDS.SOS_POLLO, skip: true },            // PIN 7315
-  'b69b49bd-fa31-4a1c-b139-ea513138bdf0': { nombre: 'Juliana', groupId: GROUP_IDS.SOS_POLLO, skip: true },           // PIN 1339
+  '51126b10-560a-4adc-8d28-f433ffb6b36e': { nombre: 'Nicolas Bernardo', groupId: GROUP_IDS.SOS_POLLO, skip: true },   // PIN 1981
+  'f31b0ccb-d682-47fa-83e1-de277b8b5d18': { nombre: 'Carla', groupId: GROUP_IDS.SOS_POLLO, skip: true },              // PIN 9861
+  '7cb1a19f-7d44-4ba8-9f01-db9f4f202104': { nombre: 'Carlo', groupId: GROUP_IDS.SOS_POLLO, skip: true },              // PIN 9027
+  '7f291d7b-08a0-45b9-86bd-bbf6758acfc3': { nombre: 'Itai', groupId: GROUP_IDS.SOS_POLLO, skip: true },               // PIN 2768
+  '0b72580f-5905-4a1b-8a56-ce355ab5ef2c': { nombre: 'Wendy', groupId: GROUP_IDS.SOS_POLLO, skip: true },              // PIN 4448
+  'beca728d-ba8e-44f0-9b12-e9ff290f4248': { nombre: 'Yeico', groupId: GROUP_IDS.SOS_POLLO, skip: true },              // PIN 5860
+  'd7201535-41cc-4c21-8281-3b38b321558a': { nombre: 'Lorena', groupId: GROUP_IDS.SOS_POLLO, skip: true },             // PIN 2295
+  '66f3f810-4e1a-444f-981b-53be5311e78c': { nombre: 'Henry', groupId: GROUP_IDS.SOS_POLLO, skip: true },              // PIN 8163
 }
 
 // Default schedule (para empleados full-time sin override).
