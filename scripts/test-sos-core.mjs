@@ -14,8 +14,9 @@ import { parseBiometricoWorkbook, personasSinteticas, personaSinteticaId, resolv
 import { GROUP_IDS, ALIAS_TURNOS_FIJOS } from '../frontend/src/config/employees'
 
 const SOS = GROUP_IDS.SOS_POLLO
-const CARPETA_BIO = 'C:/Users/anuar/OneDrive/SOS POLLO PRADO/CUADERNOS DE GERENTES/CUADERNOS GERENTES/BIOMETRICO'
-const CARPETA_HOR = 'C:/Users/anuar/OneDrive/SOS POLLO PRADO/CUADERNOS DE GERENTES/CUADERNOS GERENTES/CUADERNOS GERENTES 2026'
+import { CARPETAS } from './carpetas.mjs'
+const CARPETA_BIO = CARPETAS.SOS_POLLO.bio
+const CARPETA_HOR = CARPETAS.SOS_POLLO.horarios
 // Mismo rename que siembra cargar-navegador-core (RENOMBRES_POR_APARATO).
 const RENOMBRES = { 9: 'Nicolas Bernardo' }
 

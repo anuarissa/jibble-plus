@@ -31,7 +31,8 @@ import {
 import * as XLSX from 'xlsx-js-style'
 
 // ============================== CONFIGURACIÓN ==============================
-const CARPETA_HUPER = 'C:/Users/anuar/OneDrive/SBARRO HUPERMALL/1- CUADERNOS/5- CUADERNOS DE GERENTES/2026 CUADERNO GERENTES'
+import { CARPETAS } from './carpetas.mjs'
+const CARPETA_HUPER = CARPETAS.SBARRO_HUPER.horarios
 
 // IDs del biométrico físico → nombre corto (los actuales de Huper)
 const IDS_BIOMETRICO = { 30: 'ESTELA', 45: 'CRISTIAN', 46: 'ALICIA', 48: 'GIUSEPE', 49: 'PAULO', 54: 'CARLOS', 37: 'ANGELO' }

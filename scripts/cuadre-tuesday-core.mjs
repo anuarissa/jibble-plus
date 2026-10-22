@@ -28,8 +28,9 @@ import { calcularMulta } from '../frontend/src/utils/lateness'
 import { GROUP_IDS } from '../frontend/src/config/employees'
 
 // ============================== CONFIGURACIÓN ==============================
-const CARPETA_CUADERNOS = 'C:/Users/anuar/OneDrive/TUESDAY AMERICA/CUADERNOS DE GERENTES/CUADERNOS GERENTES'
-const CARPETA_SUELDOS = 'C:/Users/anuar/OneDrive/Anuar/Tuesday/SUELDOS/SUELDOS 2026'
+import { CARPETAS } from './carpetas.mjs'
+const CARPETA_CUADERNOS = CARPETAS.TUESDAY.horarios
+const CARPETA_SUELDOS = CARPETAS.TUESDAY.bio
 const GRUPO = GROUP_IDS.TUESDAY
 
 // Nombre del beneficiario en el archivo BANCARIO → id del biométrico.

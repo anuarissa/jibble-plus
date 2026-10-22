@@ -24,8 +24,9 @@ import { MODELO_MENSUAL_DEFAULT } from '../frontend/src/utils/payroll'
 
 const HUPER = GROUP_IDS.SBARRO_HUPER
 const CARLOS = '1337f853-a692-4143-9ade-4319d1cc139e'
-const BIO_AGO = 'C:/Users/anuar/OneDrive/Anuar/JIBBLE APP ASISTENCIA/DATOS LOCALES/SBARRO HUPER/BIOMETRICO'
-const CUADERNO_AGO = 'C:/Users/anuar/OneDrive/SBARRO HUPERMALL/1- CUADERNOS/5- CUADERNOS DE GERENTES/2026 CUADERNO GERENTES/08 PLANILLA HORARIOS 2026.xlsx'
+import { CARPETAS } from './carpetas.mjs'
+const BIO_AGO = CARPETAS.SBARRO_HUPER.bio
+const CUADERNO_AGO = `${CARPETAS.SBARRO_HUPER.horarios}/08 PLANILLA HORARIOS 2026.xlsx`
 
 // Hora Bolivia (UTC-4) → ISO, con día explícito (para salidas pasada la medianoche)
 const bol = (y, m, d, hhmm) => new Date(Date.UTC(y, m - 1, d, Number(hhmm.slice(0, 2)) + 4, Number(hhmm.slice(3)))).toISOString()

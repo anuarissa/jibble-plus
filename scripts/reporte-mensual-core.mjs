@@ -16,6 +16,7 @@
 // cero condonaciones. Para la versión con esos ajustes: app → Sueldos → Mes → Excel.
 
 import fs from 'node:fs'
+import { CARPETAS } from './carpetas.mjs'
 import path from 'node:path'
 import dotenv from 'dotenv'
 import { format } from 'date-fns'
@@ -42,28 +43,41 @@ let RAIZ = process.cwd()
 // bioCarpeta: carpeta con exports del biométrico físico (se busca /biometrico/i
 // en el nombre, recursivo 1 nivel). Si hay export del mes → segunda planilla
 // `reporte_mensual_<LOCAL>_BIOMETRICO_<mes>.xlsx`.
+function copiarALocal(archivo, local) {
+  if (!local.reportes) return
+  try {
+    fs.mkdirSync(local.reportes, { recursive: true })
+    fs.copyFileSync(path.join(RAIZ, 'reportes', archivo), path.join(local.reportes, archivo))
+    console.log(`  ✓ copia en ${local.reportes.replace('C:/Users/anuar/OneDrive/', 'OneDrive/')}`)
+  } catch (e) {
+    console.log(`  ⚠ no se pudo copiar el Excel a la carpeta del local: ${e.message}`)
+  }
+}
+
 const LOCALES = [
   {
     nombre: 'SBARRO AMERICA',
     groupId: GROUP_IDS.SBARRO_AMERICA,
     ws: 'A',
-    carpeta: 'C:/Users/anuar/OneDrive/SBARRO AMERICA/CUADERNOS DE GERENTES SA/PLANILLA SUPERVISORES SA/2026/HORARIOS 2026',
-    // Carpeta real donde Anuar guarda los exports del aparato (una subcarpeta por mes).
-    bioCarpeta: 'C:/Users/anuar/OneDrive/Anuar/SBARRO Cochabamba/FORMATOS CBBA/PAGOS SUELDOS DESDE 2017/PAGOS SUELDOS 2026',
+    carpeta: CARPETAS.SBARRO_AMERICA.horarios,
+    bioCarpeta: CARPETAS.SBARRO_AMERICA.bio,
+    reportes: CARPETAS.SBARRO_AMERICA.reportes,
   },
   {
     nombre: 'SBARRO HUPER',
     groupId: GROUP_IDS.SBARRO_HUPER,
     ws: 'B',
-    carpeta: 'C:/Users/anuar/OneDrive/SBARRO HUPERMALL/1- CUADERNOS/5- CUADERNOS DE GERENTES/2026 CUADERNO GERENTES',
-    bioCarpeta: null, // <RAIZ>/DATOS LOCALES/SBARRO HUPER/BIOMETRICO
+    carpeta: CARPETAS.SBARRO_HUPER.horarios,
+    bioCarpeta: CARPETAS.SBARRO_HUPER.bio,
+    reportes: CARPETAS.SBARRO_HUPER.reportes,
   },
   {
     nombre: 'TUESDAY',
     groupId: GROUP_IDS.TUESDAY,
     ws: null, // sin Jibble: el personal y la asistencia salen del biométrico
-    carpeta: 'C:/Users/anuar/OneDrive/TUESDAY AMERICA/CUADERNOS DE GERENTES/CUADERNOS GERENTES',
-    bioCarpeta: 'C:/Users/anuar/OneDrive/Anuar/Tuesday/SUELDOS/SUELDOS 2026',
+    carpeta: CARPETAS.TUESDAY.horarios,
+    bioCarpeta: CARPETAS.TUESDAY.bio,
+    reportes: CARPETAS.TUESDAY.reportes,
     // Semana sin horario en el cuaderno → asumir la más cercana (regla de Anuar, locales solo-biométrico)
     asumirSemanas: true,
   },
@@ -71,8 +85,9 @@ const LOCALES = [
     nombre: 'SOS POLLO',
     groupId: GROUP_IDS.SOS_POLLO,
     ws: null, // sin Jibble: el personal y la asistencia salen del biométrico (como Tuesday)
-    carpeta: 'C:/Users/anuar/OneDrive/SOS POLLO PRADO/CUADERNOS DE GERENTES/CUADERNOS GERENTES/CUADERNOS GERENTES 2026',
-    bioCarpeta: 'C:/Users/anuar/OneDrive/SOS POLLO PRADO/CUADERNOS DE GERENTES/CUADERNOS GERENTES/BIOMETRICO',
+    carpeta: CARPETAS.SOS_POLLO.horarios,
+    bioCarpeta: CARPETAS.SOS_POLLO.bio,
+    reportes: CARPETAS.SOS_POLLO.reportes,
     asumirSemanas: true,
   },
 ]
@@ -328,6 +343,7 @@ export async function generarReportes(mesStr, raiz) {
     totalesDeControl(resumen)
     const safe = local.nombre.replace(/[^a-z0-9]+/gi, '_')
     console.log(`  ✓ Excel: reportes/reporte_mensual_${safe}_${mesStr}.xlsx`)
+    copiarALocal(`reporte_mensual_${safe}_${mesStr}.xlsx`, local)
     generados++
 
     // SEGUNDA PLANILLA (solo locales con Jibble que además tengan export biométrico
@@ -356,6 +372,7 @@ export async function generarReportes(mesStr, raiz) {
       })
       totalesDeControl(resumenBio, ' [biométrico]')
       console.log(`  ✓ Excel: reportes/reporte_mensual_${nombreBio.replace(/[^a-z0-9]+/gi, '_')}_${mesStr}.xlsx`)
+      copiarALocal(`reporte_mensual_${nombreBio.replace(/[^a-z0-9]+/gi, '_')}_${mesStr}.xlsx`, local)
     } else if (local.ws != null && fs.existsSync(bioCarpeta)) {
       console.log(`  · Sin export biométrico de ${mesStr} en ${bioCarpeta} — solo planilla App (suelta el export ahí para la segunda planilla)`)
     }

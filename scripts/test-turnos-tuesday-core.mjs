@@ -10,8 +10,9 @@ import { asumirSemanasFaltantes, normalizarCelda } from '../frontend/src/utils/t
 let fallos = 0
 const check = (n, c, d = '') => { if (c) console.log(`  ✓ ${n}`); else { console.error(`  ✗ ${n} ${d}`); fallos++ } }
 
-const CUADERNO = 'C:/Users/anuar/OneDrive/TUESDAY AMERICA/CUADERNOS DE GERENTES/CUADERNOS GERENTES/07 JULIO del 2026 LIBROS DE GERENTES.xlsx'
-const BIO = 'C:/Users/anuar/OneDrive/Anuar/Tuesday/SUELDOS/SUELDOS 2026/07 JULIO SUELDOS 2026/07 JULIO BIOMETRICO TUESDAY.xls'
+import { CARPETAS } from './carpetas.mjs'
+const CUADERNO = `${CARPETAS.TUESDAY.horarios}/07 JULIO del 2026 LIBROS DE GERENTES.xlsx`
+const BIO = `${CARPETAS.TUESDAY.bio}/07 JULIO BIOMETRICO TUESDAY.xls`
 const GRUPO = 'test-tuesday'
 
 export async function correr() {

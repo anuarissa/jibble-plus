@@ -3,6 +3,7 @@
 // Fixtures que no existan en esta máquina se saltan con aviso (no fallan).
 
 import fs from 'node:fs'
+import { CARPETAS } from './carpetas.mjs'
 import * as XLSX from 'xlsx-js-style'
 import {
   parseBiometricoWorkbook, personasSinteticas, resolverPersonasBio, marcasToAttendance, personaSinteticaId,
@@ -21,7 +22,7 @@ const horasDeMarca = m => {
 export async function correr(RAIZ) {
   const F = {
     huper: `${RAIZ}/biometrico huper julio.xls`,
-    tueJul: 'C:/Users/anuar/OneDrive/Anuar/Tuesday/SUELDOS/SUELDOS 2026/07 JULIO SUELDOS 2026/07 JULIO BIOMETRICO TUESDAY.xls',
+    tueJul: `${CARPETAS.TUESDAY.bio}/07 JULIO BIOMETRICO TUESDAY.xls`,
     tue2022: 'C:/Users/anuar/OneDrive/TUESDAY AMERICA/sueldos/1_StandardReport.xls',
     tue2023: 'C:/Users/anuar/OneDrive/TUESDAY AMERICA/sueldos/2023/enero 2023 reporte.xls',
     tueOct23: 'C:/Users/anuar/OneDrive/OTRAS COSAS/Datos adjuntos de correo electrónico/02 BIOMETRICO DETALLADO OCTUBRE (1) (1).xlsx',

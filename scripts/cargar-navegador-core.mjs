@@ -8,15 +8,16 @@ import { makeJibbleClient } from '../backend/jibble-client.js'
 import { turnosDeCarpeta, bioDeCarpeta } from './reporte-mensual-core.mjs'
 import { personasSinteticas, sinteticosPorAlias } from '../frontend/src/utils/biometrico'
 import { isoWeekKey } from '../frontend/src/utils/turnos'
+import { CARPETAS } from './carpetas.mjs'
 import { GROUP_IDS, resolveGroupId, esPersonaDummy, EMPLOYEE_OVERRIDES, ALIAS_BIO_FIJOS } from '../frontend/src/config/employees'
 
-const CARPETA_SUELDOS_TUESDAY = 'C:/Users/anuar/OneDrive/Anuar/Tuesday/SUELDOS/SUELDOS 2026'
-const CARPETA_CUADERNOS_TUESDAY = 'C:/Users/anuar/OneDrive/TUESDAY AMERICA/CUADERNOS DE GERENTES/CUADERNOS GERENTES'
-const CARPETA_HORARIOS_SOS = 'C:/Users/anuar/OneDrive/SOS POLLO PRADO/CUADERNOS DE GERENTES/CUADERNOS GERENTES/CUADERNOS GERENTES 2026'
-const CARPETA_BIO_SOS = 'C:/Users/anuar/OneDrive/SOS POLLO PRADO/CUADERNOS DE GERENTES/CUADERNOS GERENTES/BIOMETRICO'
-const CARPETA_HORARIOS_HUPER = 'C:/Users/anuar/OneDrive/SBARRO HUPERMALL/1- CUADERNOS/5- CUADERNOS DE GERENTES/2026 CUADERNO GERENTES'
-const CARPETA_HORARIOS_AMERICA = 'C:/Users/anuar/OneDrive/SBARRO AMERICA/CUADERNOS DE GERENTES SA/PLANILLA SUPERVISORES SA/2026/HORARIOS 2026'
-const CARPETA_BIO_AMERICA = 'C:/Users/anuar/OneDrive/Anuar/SBARRO Cochabamba/FORMATOS CBBA/PAGOS SUELDOS DESDE 2017/PAGOS SUELDOS 2026'
+const CARPETA_BIO_TUESDAY = CARPETAS.TUESDAY.bio
+const CARPETA_CUADERNOS_TUESDAY = CARPETAS.TUESDAY.horarios
+const CARPETA_HORARIOS_SOS = CARPETAS.SOS_POLLO.horarios
+const CARPETA_BIO_SOS = CARPETAS.SOS_POLLO.bio
+const CARPETA_HORARIOS_HUPER = CARPETAS.SBARRO_HUPER.horarios
+const CARPETA_HORARIOS_AMERICA = CARPETAS.SBARRO_AMERICA.horarios
+const CARPETA_BIO_AMERICA = CARPETAS.SBARRO_AMERICA.bio
 
 // → { bioStore: { [groupId]: { [mes]: {marcas, personas, ts, archivo} } }, turnos: { [wk]: { [pid]: {...} } }, resumen: [...] }
 export async function armarSeed(mesStr, raiz) {
@@ -33,7 +34,7 @@ export async function armarSeed(mesStr, raiz) {
   }
 
   // ===== TUESDAY: biométrico + horarios del cuaderno =====
-  const bioTue = bioDeCarpeta(CARPETA_SUELDOS_TUESDAY, mesStr)
+  const bioTue = bioDeCarpeta(CARPETA_BIO_TUESDAY, mesStr)
   if (bioTue) {
     bioStore[GROUP_IDS.TUESDAY] = { [mesStr]: { marcas: bioTue.marcas, personas: bioTue.personas, ts: Date.now(), archivo: bioTue.archivo } }
     const empTue = personasSinteticas(GROUP_IDS.TUESDAY, bioTue.personas)
@@ -44,7 +45,7 @@ export async function armarSeed(mesStr, raiz) {
     mergeTurnos(t.aplicarPorSemana)
     resumen.push(`TUESDAY: bio ${bioTue.archivo} (${bioTue.personas.length} personas) · turnos ${Object.keys(t.aplicarPorSemana).length} semanas de ${t.archivos.length} cuadernos`)
   } else {
-    resumen.push(`TUESDAY: SIN export biométrico de ${mesStr} en ${CARPETA_SUELDOS_TUESDAY}`)
+    resumen.push(`TUESDAY: SIN export biométrico de ${mesStr} en ${CARPETA_BIO_TUESDAY}`)
   }
 
   // ===== SOS POLLO: biométrico + horarios (solo-biométrico, como Tuesday) =====
@@ -63,13 +64,13 @@ export async function armarSeed(mesStr, raiz) {
     resumen.push(`SOS POLLO: SIN export biométrico de ${mesStr} en ${CARPETA_BIO_SOS} — se omite (su gente sale del aparato)`)
   }
 
-  // ===== SBARRO HUPER: biométrico (DATOS LOCALES) + horarios (su carpeta OneDrive) =====
-  const bioHup = bioDeCarpeta(path.join(raiz, 'DATOS LOCALES', 'SBARRO HUPER', 'BIOMETRICO'), mesStr)
+  // ===== SBARRO HUPER: biométrico + horarios (su carpeta del local) =====
+  const bioHup = bioDeCarpeta(CARPETAS.SBARRO_HUPER.bio, mesStr)
   if (bioHup) {
     bioStore[GROUP_IDS.SBARRO_HUPER] = { [mesStr]: { marcas: bioHup.marcas, personas: bioHup.personas, ts: Date.now(), archivo: bioHup.archivo } }
     resumen.push(`SBARRO HUPER: bio ${bioHup.archivo} (${bioHup.personas.length} personas)`)
   } else {
-    resumen.push(`SBARRO HUPER: SIN export biométrico de ${mesStr} en DATOS LOCALES/SBARRO HUPER/BIOMETRICO`)
+    resumen.push(`SBARRO HUPER: SIN export biométrico de ${mesStr} en ${CARPETAS.SBARRO_HUPER.bio}`)
   }
   // Horarios de Huper con su gente real de Jibble (cuenta B) — así la fuente
   // Biométrico calcula retrasos aunque la carpeta no esté conectada en la web.

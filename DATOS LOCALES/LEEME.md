@@ -1,88 +1,43 @@
 # DATOS LOCALES — dónde va cada cosa
 
-Carpeta para los datos reales de los locales **Sbarro** (biométricos y planillas del contador).
-Se sincroniza sola por OneDrive a todas tus PCs. **Nada de esto sube a GitHub.**
+Desde el **22-oct-2026 cada local tiene su propia carpeta de asistencia** en OneDrive,
+con la misma estructura. Antes esto estaba repartido: el biométrico de Tuesday y de
+América vivía en `OneDrive\Anuar\...`, el de Huper acá adentro, y el de SOS tres
+niveles dentro de `CUADERNOS DE GERENTES`.
 
-## TUESDAY no va aquí
+## La estructura, igual en los 4 locales
 
-Tuesday usa sus carpetas de siempre (la app ya las conoce):
-
-- **Horarios**: `C:\Users\anuar\OneDrive\TUESDAY AMERICA\CUADERNOS DE GERENTES\CUADERNOS GERENTES\`
-  (los `NN MES del 2026 LIBROS DE GERENTES.xlsx` de cada mes, hoja PERSONAL TUESDAY)
-- **Biométrico + planilla del contador**: `C:\Users\anuar\OneDrive\Anuar\Tuesday\SUELDOS\SUELDOS 2026\<NN MES> SUELDOS 2026\`
-  - El biométrico de cada mes con este nombre: `07 JULIO BIOMETRICO TUESDAY.xls` (cambiando el mes).
-    Se exporta del aparato con el mismo programa de siempre (el que genera "Reporte de Asistencia").
-
-## SOS POLLO tampoco va aquí
-
-SOS Pollo (solo biométrico, sin Jibble — como Tuesday) usa estas dos carpetas,
-elegidas por Anuar el 20-ago-2026 (cada una tiene su LEEME.txt adentro):
-
-- **Horarios**: `C:\Users\anuar\OneDrive\SOS POLLO PRADO\CUADERNOS DE GERENTES\CUADERNOS GERENTES\CUADERNOS GERENTES 2026\`
-- **Biométrico**: `C:\Users\anuar\OneDrive\SOS POLLO PRADO\CUADERNOS DE GERENTES\CUADERNOS GERENTES\BIOMETRICO\`
-  (el nombre del archivo debe llevar la palabra `BIOMETRICO`, ej. `08 AGOSTO BIOMETRICO SOS.xls`)
-
-En cuanto haya un export del aparato ahí, el personal de SOS aparece solo en la
-página (sale del propio aparato) y se publica al gerente igual que los demás.
-
-## Sbarro Huper y Sbarro América
-
-```text
-DATOS LOCALES\
-  SBARRO HUPER\
-    BIOMETRICO\             ← export mensual del aparato:  biometrico sbarro huper 2026-08.xls
-    PLANILLAS CONTADOR\     ← el Excel de sueldos que te pasa el contador cada mes
-  SBARRO AMERICA\
-    BIOMETRICO\             ← export mensual del aparato:  biometrico sbarro america 2026-07.xls
-    PLANILLAS CONTADOR\
+```
+<CARPETA DEL LOCAL>\ASISTENCIA\
+  1 HORARIOS DEL GERENTE\   el cuaderno de horarios que llena el gerente
+  2 BIOMETRICO\             los exports del aparato de huellas
+  3 REPORTES MENSUALES\     los Excel que genera la app (se copian solos al generarlos)
+  4 KIOSCO Y PINS\          (solo SOS) instrucciones del celular + hoja de PIN
 ```
 
-- **El nombre del archivo es solo para orden** — la app lee el mes real de la fila
-  `Periodo:` que viene adentro del export. Cualquier `.xls`/`.xlsx` con la palabra
-  `biometrico` en el nombre se procesa.
-- Si exportas dos veces el mismo mes, **gana el archivo más nuevo**.
+| Local | Carpeta |
+|---|---|
+| Sbarro América | `C:\Users\anuar\OneDrive\SBARRO AMERICA\ASISTENCIA\` |
+| Sbarro Huper | `C:\Users\anuar\OneDrive\SBARRO HUPERMALL\ASISTENCIA\` |
+| Tuesday | `C:\Users\anuar\OneDrive\TUESDAY AMERICA\ASISTENCIA\` |
+| SOS Pollo | `C:\Users\anuar\OneDrive\SOS POLLO PRADO\ASISTENCIA\` |
 
-## Cómo se usa en la página web (jibble-plus.vercel.app o localhost)
+Las rutas están en **un solo archivo**: [`scripts/carpetas.mjs`](../scripts/carpetas.mjs).
+Si alguna carpeta se mueve, se cambia ahí y nada más.
 
-1. Ir a **Sueldos** y elegir el local.
-2. Con el filtro **Fuente** puedes alternar entre **App** (fichajes de Jibble) y
-   **Biométrico** (marcas del aparato).
-3. La primera vez en fuente Biométrico: botón **"Conectar carpeta"** → elegir la
-   carpeta `BIOMETRICO` del local (para Tuesday: la carpeta `SUELDOS 2026`).
-   Elegir "Permitir en cada visita" para que sincronice sola.
-4. Si aparece el panel **"Nombres sin empleado"**, asignar cada nombre del aparato
-   a su empleado (o "Ignorar siempre") — se hace una sola vez.
+## El nombre de los archivos sí importa
 
-## Cuando edites un Excel ya cargado
+- **Biométrico**: el nombre tiene que contener la palabra `BIOMETRICO`
+  (ej. `09 SEPTIEMBRE BIOMETRICO TUESDAY.xls`). El mes lo detecta la app leyendo el
+  contenido del archivo, no el nombre, así que un nombre raro no rompe nada mientras
+  lleve esa palabra.
+- **Horarios**: un Excel por mes con el número del mes adelante (`09 ...`). Si dos
+  archivos traen la misma semana, gana el modificado más recientemente.
 
-- En el **Panel de control** hay un botón **"Recargar Excels"**: vuelve a leer los
-  archivos de TODOS los locales (horarios + biométrico) y deja los datos igual a
-  lo que dicen los archivos ahora — **lo que borraste del Excel se borra en la app**.
-- Si dejaste el Excel abierto o OneDrive todavía no lo descargó, esa carpeta
-  **no borra nada** por seguridad: actualiza lo demás y te avisa.
-- También se relee solo cuando vuelves a la pestaña del navegador (ahí solo
-  actualiza y agrega, nunca borra).
-- El detalle carpeta por carpeta está en **Configuración → Carpetas de Excel conectadas**.
-- Después de una recarga, corre `node scripts/publicar-datos.mjs` para que el
-  gerente vea lo mismo.
+## Qué queda en esta carpeta del repo
 
-## Compartir con el gerente y otros dispositivos
+- `.backups\` — copia del Local Storage de Edge antes de cada carga al navegador.
+- `mudanza-carpetas-2026-10-22.txt` — el log de la mudanza (origen → destino de cada
+  archivo movido), por si alguna vez hay que revertirla.
 
-Los datos que cargas en TU PC (biométrico, horarios, aprobaciones, tarifas) se
-comparten con un comando:
-
-- `node scripts/publicar-datos.mjs` — cierra y reabre tu Edge, cifra los datos
-  con la contraseña de la app y los sube con el deploy (~1 min).
-- Cualquier dispositivo que entre con la contraseña (celular incluido) los
-  recibe SOLO al refrescar la página. No hay que conectar carpetas ahí.
-- La contraseña es UNA para todos — no existe una contraseña por local.
-- Lo que NUNCA viaja: tus preferencias de vista (locales ocultos), settings
-  y la sesión. Cada dispositivo mantiene lo suyo.
-
-Correlo después de cargar un mes nuevo o de aprobar extras.
-
-## Reportes por consola (sin navegador)
-
-- `node scripts/reporte-mensual.mjs 2026-07` → planillas App y Biométrico de cada local
-- `node scripts/cuadre-tuesday.mjs 2026-07` → cuadre de Tuesday contra el contador (PDF)
-- `node scripts/cuadre-huper.mjs 2026-07` → cuadre de Huper contra el contador (PDF)
+**Nada de esto sube a GitHub.**

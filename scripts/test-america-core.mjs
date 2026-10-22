@@ -16,8 +16,9 @@ import {
 } from '../frontend/src/utils/biometrico'
 import { GROUP_IDS, ALIAS_TURNOS_FIJOS, EMPLOYEE_OVERRIDES } from '../frontend/src/config/employees'
 
-const CARPETA_HORARIOS = 'C:/Users/anuar/OneDrive/SBARRO AMERICA/CUADERNOS DE GERENTES SA/PLANILLA SUPERVISORES SA/2026/HORARIOS 2026'
-const CARPETA_BIO = 'C:/Users/anuar/OneDrive/Anuar/SBARRO Cochabamba/FORMATOS CBBA/PAGOS SUELDOS DESDE 2017/PAGOS SUELDOS 2026'
+import { CARPETAS } from './carpetas.mjs'
+const CARPETA_HORARIOS = CARPETAS.SBARRO_AMERICA.horarios
+const CARPETA_BIO = CARPETAS.SBARRO_AMERICA.bio
 const G = GROUP_IDS.SBARRO_AMERICA
 
 // Gente real de América en Jibble (cuenta A). Fabiola Rojas lleva su uuid REAL
