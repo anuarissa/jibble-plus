@@ -33,6 +33,10 @@ export async function armarSeed(mesStr, raiz) {
     }
   }
 
+  // Gente de SOS que solo existe en el aparato (ex-empleados): se usa más abajo,
+  // junto con las fichas del kiosco, para resolver los nombres del cuaderno.
+  let sintSos = []
+
   // ===== TUESDAY: biométrico + horarios del cuaderno =====
   const bioTue = bioDeCarpeta(CARPETA_BIO_TUESDAY, mesStr)
   if (bioTue) {
@@ -48,20 +52,17 @@ export async function armarSeed(mesStr, raiz) {
     resumen.push(`TUESDAY: SIN export biométrico de ${mesStr} en ${CARPETA_BIO_TUESDAY}`)
   }
 
-  // ===== SOS POLLO: biométrico + horarios (solo-biométrico, como Tuesday) =====
+  // ===== SOS POLLO: biométrico del aparato (histórico de julio/agosto) =====
   const bioSos = bioDeCarpeta(CARPETA_BIO_SOS, mesStr)
   if (bioSos) {
     bioStore[GROUP_IDS.SOS_POLLO] = { [mesStr]: { marcas: bioSos.marcas, personas: bioSos.personas, ts: Date.now(), archivo: bioSos.archivo } }
     // personasSinteticas ya aplica RENOMBRES_APARATO (config/employees.js): así
     // "BERNARDO/DESPACHO" del cuaderno cae en Nicolas Bernardo y los dos
     // "NICOLAS" del aparato dejan de confundirse entre sí.
-    const empSos = personasSinteticas(GROUP_IDS.SOS_POLLO, bioSos.personas)
-    const tS = turnosDeCarpeta(CARPETA_HORARIOS_SOS, empSos, GROUP_IDS.SOS_POLLO, isoWeekKey(ini))
-    mergeTurnos(tS.aplicarPorSemana)
-    resumen.push(`SOS POLLO: bio ${bioSos.archivo} (${bioSos.personas.length} personas) · turnos ${Object.keys(tS.aplicarPorSemana).length} semanas de ${tS.archivos.length} cuadernos`)
-    if (tS.noEncontrados.length) resumen.push(`SOS POLLO: nombres del cuaderno sin resolver: ${tS.noEncontrados.join(', ')}`)
+    sintSos = sinteticosPorAlias(GROUP_IDS.SOS_POLLO, bioSos.personas, ALIAS_BIO_FIJOS[GROUP_IDS.SOS_POLLO] || {})
+    resumen.push(`SOS POLLO: bio ${bioSos.archivo} (${bioSos.personas.length} personas del aparato)`)
   } else {
-    resumen.push(`SOS POLLO: SIN export biométrico de ${mesStr} en ${CARPETA_BIO_SOS} — se omite (su gente sale del aparato)`)
+    resumen.push(`SOS POLLO: sin export del aparato de ${mesStr} (desde oct-2026 ficha en el kiosco: no hace falta)`)
   }
 
   // ===== SBARRO HUPER: biométrico + horarios (su carpeta del local) =====
@@ -112,11 +113,11 @@ export async function armarSeed(mesStr, raiz) {
     try {
       const clientA = makeJibbleClient(idA, secA)
       const peopleA = await clientA.getPeople()
-      const empAme = peopleA
+      const gentePrincipal = peopleA
         .filter(p => !esPersonaDummy(p.fullName))
         .filter(p => EMPLOYEE_OVERRIDES[p.id]?.skip !== true)
         .map(p => ({ ...p, groupId: resolveGroupId(p.id, p.groupId, {}, 'A', p.fullName) }))
-        .filter(p => p.groupId === GROUP_IDS.SBARRO_AMERICA)
+      const empAme = gentePrincipal.filter(p => p.groupId === GROUP_IDS.SBARRO_AMERICA)
       // + gente que solo existe en el aparato pero cobra por planilla (ANGEL,
       // MATIAS, LUCIANA). Sin ellos, "ANGEL" del cuaderno se parecía a "AXEL"
       // (Levenshtein 2) y sus turnos terminaban en la ficha equivocada.
@@ -125,6 +126,14 @@ export async function armarSeed(mesStr, raiz) {
       mergeTurnos(tA.aplicarPorSemana)
       resumen.push(`SBARRO AMERICA: turnos ${Object.keys(tA.aplicarPorSemana).length} semanas de ${tA.archivos.length} planillas · ${empAme.length} empleados`)
       if (tA.noEncontrados.length) resumen.push(`SBARRO AMERICA: nombres del Excel sin resolver: ${tA.noEncontrados.join(', ')}`)
+
+      // SOS POLLO ficha en el kiosco (misma cuenta A): sus turnos se resuelven
+      // contra las fichas reales + los ex-empleados que solo están en el aparato.
+      const empSos = gentePrincipal.filter(p => p.groupId === GROUP_IDS.SOS_POLLO)
+      const tS = turnosDeCarpeta(CARPETA_HORARIOS_SOS, [...empSos, ...sintSos], GROUP_IDS.SOS_POLLO, isoWeekKey(ini))
+      mergeTurnos(tS.aplicarPorSemana)
+      resumen.push(`SOS POLLO: turnos ${Object.keys(tS.aplicarPorSemana).length} semanas de ${tS.archivos.length} cuadernos · ${empSos.length} personas del kiosco`)
+      if (tS.noEncontrados.length) resumen.push(`SOS POLLO: nombres del cuaderno sin resolver: ${tS.noEncontrados.join(', ')}`)
     } catch (e) {
       resumen.push(`SBARRO AMERICA: no se pudieron leer turnos (${e.message})`)
     }

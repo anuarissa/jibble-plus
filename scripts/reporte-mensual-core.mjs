@@ -84,7 +84,9 @@ const LOCALES = [
   {
     nombre: 'SOS POLLO',
     groupId: GROUP_IDS.SOS_POLLO,
-    ws: null, // sin Jibble: el personal y la asistencia salen del biométrico (como Tuesday)
+    // Desde el 23-oct-2026 SOS ficha en el kiosco de Jibble (cuenta A). El aparato
+    // de huellas queda como segunda planilla para comparar y para julio/agosto.
+    ws: 'A',
     carpeta: CARPETAS.SOS_POLLO.horarios,
     bioCarpeta: CARPETAS.SOS_POLLO.bio,
     reportes: CARPETAS.SOS_POLLO.reportes,
@@ -325,26 +327,34 @@ export async function generarReportes(mesStr, raiz) {
       getTarifaResolved: (id) => getTarifaForPerson(id),
     }
 
-    descargarReporteMensual({
-      empleados, attendance, schedules,
-      condonaciones: {}, turnos, personOverrides: {},
-      mes, cfg, group: { id: local.groupId, name: local.nombre },
-    })
+    // Local con Jibble pero sin un solo fichaje del mes (ej. SOS antes de que
+    // arrancara el kiosco): la planilla "App" saldría en cero y con faltas falsas
+    // por los horarios del cuaderno. Se omite: ese mes sale del aparato.
+    const soloAparato = local.ws != null && attendance.length === 0 && !!bio
+    if (soloAparato) {
+      console.log(`  · Sin fichajes de Jibble en ${mesStr} → se omite la planilla App; este mes sale del aparato (planilla BIOMETRICO)`)
+    } else {
+      descargarReporteMensual({
+        empleados, attendance, schedules,
+        condonaciones: {}, turnos, personOverrides: {},
+        mes, cfg, group: { id: local.groupId, name: local.nombre },
+      })
 
-    // Totales de control (mismo motor que la página Sueldos, modo Mes → modelo mensual
-    // del contador: 3.300 Bs por 208 h, extras aprobadas a 13,75 Bs/h). Las aprobaciones
-    // viven en el navegador (localStorage) — el CLI no aprueba, solo lista pendientes.
-    const resumen = resumenSueldos({
-      empleados, attendance, schedules,
-      condonaciones: {}, extrasAprobadas: {}, turnos, personOverrides: {},
-      ini, fin, settings: cfg.config.settings, getTarifa: cfg.getTarifaResolved, groupId: local.groupId,
-      modeloMensual: MODELO_MENSUAL_DEFAULT,
-    })
-    totalesDeControl(resumen)
-    const safe = local.nombre.replace(/[^a-z0-9]+/gi, '_')
-    console.log(`  ✓ Excel: reportes/reporte_mensual_${safe}_${mesStr}.xlsx`)
-    copiarALocal(`reporte_mensual_${safe}_${mesStr}.xlsx`, local)
-    generados++
+      // Totales de control (mismo motor que la página Sueldos, modo Mes → modelo mensual
+      // del contador: 3.300 Bs por 208 h, extras aprobadas a 13,75 Bs/h). Las aprobaciones
+      // viven en el navegador (localStorage) — el CLI no aprueba, solo lista pendientes.
+      const resumen = resumenSueldos({
+        empleados, attendance, schedules,
+        condonaciones: {}, extrasAprobadas: {}, turnos, personOverrides: {},
+        ini, fin, settings: cfg.config.settings, getTarifa: cfg.getTarifaResolved, groupId: local.groupId,
+        modeloMensual: MODELO_MENSUAL_DEFAULT,
+      })
+      totalesDeControl(resumen)
+      const safe = local.nombre.replace(/[^a-z0-9]+/gi, '_')
+      console.log(`  ✓ Excel: reportes/reporte_mensual_${safe}_${mesStr}.xlsx`)
+      copiarALocal(`reporte_mensual_${safe}_${mesStr}.xlsx`, local)
+      generados++
+    }
 
     // SEGUNDA PLANILLA (solo locales con Jibble que además tengan export biométrico
     // del mes): mismos horarios y reglas, pero la asistencia sale del APARATO.

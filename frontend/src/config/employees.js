@@ -112,19 +112,19 @@ export const EMPLOYEE_OVERRIDES = {
   // quiosco (nombre + PIN de 4 dígitos). El plan gratis ya no deja asignar grupo
   // (Groups es Premium), así que sin este groupId caerían en SBARRO AMÉRICA.
   //
-  // skip: true MIENTRAS la planilla de SOS siga saliendo del aparato de huellas.
-  // Si entran como gente real de SOS, useJibble.js toma la rama "local CON
-  // Jibble" y deja de crear los sintéticos del aparato → se perdería el
-  // histórico de julio/agosto. El día que SOS cobre por los fichajes del kiosco:
-  // quitar skip y sacar SOS_POLLO de GRUPOS_SOLO_BIOMETRICO.
-  '51126b10-560a-4adc-8d28-f433ffb6b36e': { nombre: 'Nicolas Bernardo', groupId: GROUP_IDS.SOS_POLLO, skip: true },   // PIN 1981
-  'f31b0ccb-d682-47fa-83e1-de277b8b5d18': { nombre: 'Carla', groupId: GROUP_IDS.SOS_POLLO, skip: true },              // PIN 9861
-  '7cb1a19f-7d44-4ba8-9f01-db9f4f202104': { nombre: 'Carlo', groupId: GROUP_IDS.SOS_POLLO, skip: true },              // PIN 9027
-  '7f291d7b-08a0-45b9-86bd-bbf6758acfc3': { nombre: 'Itai', groupId: GROUP_IDS.SOS_POLLO, skip: true },               // PIN 2768
-  '0b72580f-5905-4a1b-8a56-ce355ab5ef2c': { nombre: 'Wendy', groupId: GROUP_IDS.SOS_POLLO, skip: true },              // PIN 4448
-  'beca728d-ba8e-44f0-9b12-e9ff290f4248': { nombre: 'Yeico', groupId: GROUP_IDS.SOS_POLLO, skip: true },              // PIN 5860
-  'd7201535-41cc-4c21-8281-3b38b321558a': { nombre: 'Lorena', groupId: GROUP_IDS.SOS_POLLO, skip: true },             // PIN 2295
-  '66f3f810-4e1a-444f-981b-53be5311e78c': { nombre: 'Henry', groupId: GROUP_IDS.SOS_POLLO, skip: true },              // PIN 8163
+  // Desde el 23-oct-2026 la planilla de SOS sale del KIOSCO (estas fichas de
+  // Jibble). Julio y agosto siguen saliendo del aparato de huellas: las huellas
+  // de Bernardo y Carla apuntan a su ficha de acá (ver ALIAS_BIO_FIJOS), así su
+  // historia es una sola. Sin el groupId caerían en SBARRO AMÉRICA, porque el
+  // plan gratis de Jibble ya no deja asignar grupo.
+  '51126b10-560a-4adc-8d28-f433ffb6b36e': { nombre: 'Nicolas Bernardo', groupId: GROUP_IDS.SOS_POLLO },   // PIN 1981
+  'f31b0ccb-d682-47fa-83e1-de277b8b5d18': { nombre: 'Carla', groupId: GROUP_IDS.SOS_POLLO },              // PIN 9861
+  '7cb1a19f-7d44-4ba8-9f01-db9f4f202104': { nombre: 'Carlo', groupId: GROUP_IDS.SOS_POLLO },              // PIN 9027
+  '7f291d7b-08a0-45b9-86bd-bbf6758acfc3': { nombre: 'Itai', groupId: GROUP_IDS.SOS_POLLO },               // PIN 2768
+  '0b72580f-5905-4a1b-8a56-ce355ab5ef2c': { nombre: 'Wendy', groupId: GROUP_IDS.SOS_POLLO },              // PIN 4448
+  'beca728d-ba8e-44f0-9b12-e9ff290f4248': { nombre: 'Yeico', groupId: GROUP_IDS.SOS_POLLO },              // PIN 5860
+  'd7201535-41cc-4c21-8281-3b38b321558a': { nombre: 'Lorena', groupId: GROUP_IDS.SOS_POLLO },             // PIN 2295
+  '66f3f810-4e1a-444f-981b-53be5311e78c': { nombre: 'Henry', groupId: GROUP_IDS.SOS_POLLO },              // PIN 8163
 }
 
 // Default schedule (para empleados full-time sin override).
@@ -291,6 +291,7 @@ export const SIN_PLANILLA_APARATO = {
   [GROUP_IDS.SOS_POLLO]: [
     29,   // VLADY (1 día en julio) — no cubre sueldo (Anuar, 21-ago-2026)
     55,   // ALEJANDRO (7 días en julio) — íd.
+    35,   // ANUAR — la huella del dueño en el aparato de SOS
   ],
 }
 
@@ -307,6 +308,19 @@ export const ALIAS_BIO_FIJOS = {
     'id:37': 'CREAR',   // ANGELO — cuaderno "ANGHELO", marcó 3–15 ago 2026
     'id:51': 'CREAR',   // ANGEL — entró el 25 ago 2026, se fue a la América el 21 sep
     'id:1': 'CREAR',    // BRENDA — entró el 23 sep 2026 (reemplaza a Angel)
+  },
+  // SOS POLLO: el local pasó al kiosco el 22-oct-2026, pero julio y agosto salen
+  // del aparato de huellas. Enlazar las huellas con las fichas de Jibble hace que
+  // Bernardo y Carla tengan UNA sola historia (aparato + kiosco) en vez de dos
+  // fichas sueltas. Los otros cuatro ya no trabajan: se crean como empleados solo
+  // biométricos para que los meses viejos sigan completos.
+  [GROUP_IDS.SOS_POLLO]: {
+    'id:9': '51126b10-560a-4adc-8d28-f433ffb6b36e',   // NICOLAS del aparato = Nicolas Bernardo
+    'id:57': 'f31b0ccb-d682-47fa-83e1-de277b8b5d18',  // CARLA
+    'id:70': 'CREAR',   // JHASILMA — se fue antes de octubre
+    'id:71': 'CREAR',   // JONATHAN — íd.
+    'id:73': 'CREAR',   // ROMINA — íd.
+    'id:75': 'CREAR',   // JULIANA — íd.
   },
   [GROUP_IDS.SBARRO_AMERICA]: {
     // La huella 31 es Fabiola Rojas (Anuar, 16-sep-2026). Sin esto sus ~214 h de
@@ -342,6 +356,14 @@ export const FECHAS_BAJA = {
 // aunque el cuaderno ya lo tuviera en el horario — caso real: el gerente puso a
 // ANGEL desde el 18-ago y empezó el 25).
 export const FECHAS_ALTA = {
+  // SOS POLLO: los seis que entraron con el kiosco (22-oct-2026). Bernardo y Carla
+  // NO llevan alta a propósito: su historia del aparato es de julio y agosto.
+  '7cb1a19f-7d44-4ba8-9f01-db9f4f202104': '2026-10-22',  // CARLO
+  '7f291d7b-08a0-45b9-86bd-bbf6758acfc3': '2026-10-22',  // ITAI
+  '0b72580f-5905-4a1b-8a56-ce355ab5ef2c': '2026-10-22',  // WENDY
+  'beca728d-ba8e-44f0-9b12-e9ff290f4248': '2026-10-22',  // YEICO
+  'd7201535-41cc-4c21-8281-3b38b321558a': '2026-10-22',  // LORENA
+  '66f3f810-4e1a-444f-981b-53be5311e78c': '2026-10-22',  // HENRY
   // TUESDAY, septiembre 2026: KATTY entró el 7 y los cuatro nuevos empezaron a
   // marcar el 21-22. JANETH figuraba en el cuaderno desde el 7 como lavaplatos pero
   // entró el 22 (Anuar, 11-oct-2026) → esas 9 faltas no eran suyas.
@@ -384,7 +406,6 @@ export function diaFueraDeContrato(personId, diaStr) {
 // personId. Agregar aquí futuros locales solo-biométrico.
 export const GRUPOS_SOLO_BIOMETRICO = new Set([
   GROUP_IDS.TUESDAY,
-  GROUP_IDS.SOS_POLLO,   // biométrico pendiente — el día que llegue su export, funciona solo
 ])
 
 // Usuarios "dummy" de Jibble (cuentas del local, no personas reales) — nunca
