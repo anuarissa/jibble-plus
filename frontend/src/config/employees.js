@@ -204,11 +204,11 @@ export const ALIAS_TURNOS_FIJOS = {
     // Angelo y Angel. Son DOS personas (Anuar, 10-sep-2026).
     anghelo: 'bio:c861e236-e39c-4fd1-9491-eee531249db6:37',  // ANGELO del aparato (id 37)
     angel: 'bio:c861e236-e39c-4fd1-9491-eee531249db6:51',    // ANGEL del aparato (id 51)
-    brenda: 'bio:c861e236-e39c-4fd1-9491-eee531249db6:1',    // BRENDA del aparato (id 1), desde sep-2026
+    brenda: 'c213b687-6e3c-4797-8058-460b391bc794',   // BRENDA: ficha de Jibble desde el kiosco (nov-2026); su huella del aparato apunta acá
     // ALONDRA se pasó de la América al Huper el 21-sep-2026 pero todavía no
     // tiene huella en este aparato ni ficha en esta cuenta de Jibble: sin esto
     // el cuaderno le generaría faltas por días que nadie puede medir.
-    alondra: 'IGNORAR',
+    alondra: 'fd1ba6ca-ed25-44ad-8e86-e5d0120356b4',  // ficha propia en la cuenta de Huper desde el kiosco (nov-2026)
   },
   [GROUP_IDS.SBARRO_AMERICA]: {
     anuar: 'IGNORAR',                                        // el dueño no entra a planilla
@@ -307,7 +307,7 @@ export const ALIAS_BIO_FIJOS = {
   [GROUP_IDS.SBARRO_HUPER]: {
     'id:37': 'CREAR',   // ANGELO — cuaderno "ANGHELO", marcó 3–15 ago 2026
     'id:51': 'CREAR',   // ANGEL — entró el 25 ago 2026, se fue a la América el 21 sep
-    'id:1': 'CREAR',    // BRENDA — entró el 23 sep 2026 (reemplaza a Angel)
+    'id:1': 'c213b687-6e3c-4797-8058-460b391bc794',   // BRENDA — su huella del aparato cae en su ficha de Jibble
   },
   // SOS POLLO: el local pasó al kiosco el 22-oct-2026, pero julio y agosto salen
   // del aparato de huellas. Enlazar las huellas con las fichas de Jibble hace que
@@ -374,7 +374,8 @@ export const FECHAS_ALTA = {
   'bio:8aab06f8-29e2-4a8d-8b64-56d45a81c65a:7': '2026-09-22',  // PAULO (id 7)
   'bio:c861e236-e39c-4fd1-9491-eee531249db6:51': '2026-08-25', // ANGEL (Huper, aparato id 51)
   'bio:3ab9e1ac-b61b-462e-9322-b5575e710fac:3': '2026-09-22',  // ANGEL en la América (vino del Huper)
-  'bio:c861e236-e39c-4fd1-9491-eee531249db6:1': '2026-09-23',  // BRENDA (Huper)
+  'c213b687-6e3c-4797-8058-460b391bc794': '2026-09-23',  // BRENDA (Huper): empezó en el aparato, sigue en el kiosco
+  'fd1ba6ca-ed25-44ad-8e86-e5d0120356b4': '2026-09-21',  // ALONDRA: se pasó de la América al Huper
 }
 
 export const fechaBaja = personId => FECHAS_BAJA[personId] || null

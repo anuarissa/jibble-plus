@@ -21,7 +21,7 @@ import { Skeleton } from '../components/ui/Skeleton'
 import { FuenteBiometricoPanel } from '../components/sueldos/FuenteBiometricoPanel'
 import { resumenSueldos } from '../utils/resumen-sueldos'
 import { MODELO_MENSUAL_DEFAULT } from '../utils/payroll'
-import { celdaToRow, comentarioAnomalia, claveCondonacionFalta, MAX_EXTRA_MANUAL } from '../utils/stats'
+import { celdaToRow, comentarioAnomalia, claveCondonacionFalta, MAX_EXTRA_MANUAL, EXPORT_COLUMNS_ASISTENCIA } from '../utils/stats'
 import { resolverPersonasBio, marcasToAttendance, aliasKeyBio } from '../utils/biometrico'
 import { exportLiquidacionEmpleado, multaDelDia, noRegistroDelDia, faltaDelDia } from '../utils/liquidacion-empleado'
 import { marcasEnRango, personasBioDeLocal, mesesConDatos, localesConBio, useBioVersion } from '../utils/biometrico-store'
@@ -39,7 +39,7 @@ function rangoDeSemana(weekKey) {
   return `${format(lun, 'd')}–${format(dom, 'd MMM')}`
 }
 import { formatBs, formatHoras, formatFecha, formatFechaCorta, formatMesAno, formatDiaLargo } from '../utils/format'
-import { exportCSV, exportExcel } from '../utils/export'
+import { exportCSV, exportExcelMultiSheet } from '../utils/export'
 
 const MODOS = [
   { id: 'dia', label: 'Día', icon: Calendar },
@@ -270,6 +270,23 @@ export default function ResumenSueldos({ cfg }) {
     { label: 'Días sin horario', accessor: 'diasSinHorario', width: 14, numFmt: '0' },
     { label: 'Días a revisar', accessor: 'diasARevisar', width: 13, numFmt: '0' },
   ]
+  // Dos hojas: el resumen por persona y el DÍA A DÍA con las horas reales de
+  // entrada y salida (las mismas columnas del reporte mensual). En un local sin
+  // horario cargado esa segunda hoja es la única forma de ver a qué hora entra y
+  // sale cada uno — y con qué construirles el horario.
+  const hojasExcel = () => {
+    const cabecera = {
+      fullName: `— ${nombreLocal} · ${rangoLabel} · fuente: ${fuenteEfectiva === 'bio' ? 'Biométrico físico' : 'App (Jibble)'} —`,
+      faltas: [], cumplimiento: null,
+    }
+    const diaADia = (resumen?.filas || [])
+      .flatMap(f => (f.cells || []).filter(c => c.fichaje || c.falto).map(c => celdaToRow(f.empleado, c, nombreLocal)))
+      .sort((a, b) => String(a.Fecha).localeCompare(String(b.Fecha)) || String(a.Empleado).localeCompare(String(b.Empleado)))
+    return [
+      { name: 'RESUMEN', columns: exportColumns, rows: [cabecera, ...resumen.filas], sectionMarkerCol: 'fullName', sectionMarkerPrefix: '—' },
+      { name: 'DÍA A DÍA', columns: EXPORT_COLUMNS_ASISTENCIA, rows: diaADia },
+    ]
+  }
   const fileBase = `sueldos_${nombreLocal.replace(/[^a-z0-9]+/gi, '_')}_${format(ini, 'dd-MM-yyyy')}_${format(fin, 'dd-MM-yyyy')}${fuenteEfectiva === 'bio' ? '_BIOMETRICO' : ''}`
 
   if (!ready) return <div className="p-8 max-w-[1400px] mx-auto"><Skeleton className="h-96" /></div>
@@ -356,7 +373,7 @@ export default function ResumenSueldos({ cfg }) {
             <button onClick={() => exportCSV(fileBase, resumen.filas, exportColumns)} className="btn-secondary text-xs">
               <Download size={14} /> CSV
             </button>
-            <button onClick={() => exportExcel(fileBase, resumen.filas, exportColumns)} className="btn-secondary text-xs">
+            <button onClick={() => exportExcelMultiSheet(fileBase, hojasExcel())} className="btn-secondary text-xs">
               <FileSpreadsheet size={14} /> Excel
             </button>
           </div>
