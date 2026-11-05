@@ -306,9 +306,10 @@ export async function generarReportes(mesStr, raiz) {
     const sinPlanilla = semanas.filter(wk => !turnos[wk])
     if (local.asumirSemanas && sinPlanilla.length) {
       // Regla de Anuar (locales biométricos): semana sin horario → asumir la más cercana
-      const { relleno, semanasAsumidas } = asumirSemanasFaltantes(turnos, semanas)
+      const { relleno, semanasAsumidas, semanasSinAsumir } = asumirSemanasFaltantes(turnos, semanas)
       turnos = relleno
       for (const s of semanasAsumidas) console.log(`  ⚠ Semana ${s.semana} SIN horario en el cuaderno → ASUMIDO el de ${s.desde}`)
+      for (const s of (semanasSinAsumir || [])) console.log(`  ⚠ Semana ${s.semana} SIN horario: el cuaderno más cercano es de ${s.desde}, ${s.distancia} semanas atrás → NO se asume (esos días no evalúan faltas ni tardanzas)`)
     } else if (sinPlanilla.length) {
       console.log(`  ⚠ Semanas del mes SIN planilla: ${sinPlanilla.join(', ')} (esos días no evalúan faltas/tardanzas)`)
     }

@@ -253,13 +253,30 @@ export function textToTurno(raw) {
 //   mezcla todos los locales en cada semana, así que "semana con datos" y la copia
 //   se evalúan solo sobre esas personas, y el relleno se MERGEA sin pisar al resto.
 // → { relleno: turnos con las semanas faltantes copiadas, semanasAsumidas: [{semana, desde}] }
-export function asumirSemanasFaltantes(turnosPorSemana, weekKeysNecesarias, personIds = null) {
+// Semanas que se pueden asumir hacia atrás/adelante: un mes. Más allá de eso el
+// cuaderno ya no describe al local (SOS en oct-2026 tenía el cuaderno de julio:
+// se le inventaban horarios de gente que ya no trabajaba y salían 38 faltas).
+export const MAX_SEMANAS_ASUMIR = 4
+
+const lunesDeWeekKey = wk => {
+  const [anio, semana] = String(wk).split('-W').map(Number)
+  const ene4 = new Date(anio, 0, 4)
+  const lunes1 = new Date(ene4)
+  lunes1.setDate(ene4.getDate() - ((ene4.getDay() + 6) % 7))
+  const d = new Date(lunes1)
+  d.setDate(lunes1.getDate() + (semana - 1) * 7)
+  return d
+}
+const semanasEntre = (a, b) => Math.abs(Math.round((lunesDeWeekKey(a) - lunesDeWeekKey(b)) / (7 * 86400000)))
+
+export function asumirSemanasFaltantes(turnosPorSemana, weekKeysNecesarias, personIds = null, maxSemanas = MAX_SEMANAS_ASUMIR) {
   const base = turnosPorSemana || {}
   const filtro = personIds ? new Set(personIds) : null
   const tieneDatos = wk => Object.keys(base[wk] || {}).some(pid => !filtro || filtro.has(pid))
   const disponibles = Object.keys(base).filter(tieneDatos).sort()
   const relleno = { ...base }
   const semanasAsumidas = []
+  const semanasSinAsumir = []
   for (const wk of (weekKeysNecesarias || [])) {
     if (tieneDatos(wk)) continue
     if (!disponibles.length) continue
@@ -267,6 +284,9 @@ export function asumirSemanasFaltantes(turnosPorSemana, weekKeysNecesarias, pers
     const anteriores = disponibles.filter(d => d < wk)
     const desde = anteriores[anteriores.length - 1] || disponibles.find(d => d > wk)
     if (!desde) continue
+    // Cuaderno demasiado viejo (o demasiado futuro): mejor sin horario que con uno inventado.
+    const distancia = semanasEntre(desde, wk)
+    if (distancia > maxSemanas) { semanasSinAsumir.push({ semana: wk, desde, distancia }); continue }
     const copia = { ...(relleno[wk] || {}) }
     for (const [personId, dias] of Object.entries(base[desde])) {
       if (filtro && !filtro.has(personId)) continue
@@ -281,7 +301,7 @@ export function asumirSemanasFaltantes(turnosPorSemana, weekKeysNecesarias, pers
     relleno[wk] = copia
     semanasAsumidas.push({ semana: wk, desde })
   }
-  return { relleno, semanasAsumidas }
+  return { relleno, semanasAsumidas, semanasSinAsumir }
 }
 
 // Días de la semana en español (orden Lun..Dom)

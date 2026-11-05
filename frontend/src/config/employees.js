@@ -375,7 +375,11 @@ export const FECHAS_ALTA = {
   'bio:c861e236-e39c-4fd1-9491-eee531249db6:51': '2026-08-25', // ANGEL (Huper, aparato id 51)
   'bio:3ab9e1ac-b61b-462e-9322-b5575e710fac:3': '2026-09-22',  // ANGEL en la América (vino del Huper)
   'c213b687-6e3c-4797-8058-460b391bc794': '2026-09-23',  // BRENDA (Huper): empezó en el aparato, sigue en el kiosco
-  'fd1ba6ca-ed25-44ad-8e86-e5d0120356b4': '2026-09-21',  // ALONDRA: se pasó de la América al Huper
+  // ALONDRA: se pasó al Huper el 21-sep, pero allá no tenía huella ni ficha: sus
+  // días de septiembre y octubre no los registró nadie y se pagan aparte. Su alta
+  // es el día que arranca el kiosco, para no inventarle faltas de meses que no
+  // tenía cómo marcar.
+  'fd1ba6ca-ed25-44ad-8e86-e5d0120356b4': '2026-11-05',
 }
 
 export const fechaBaja = personId => FECHAS_BAJA[personId] || null
