@@ -380,6 +380,9 @@ export const FECHAS_ALTA = {
   // es el día que arranca el kiosco, para no inventarle faltas de meses que no
   // tenía cómo marcar.
   'fd1ba6ca-ed25-44ad-8e86-e5d0120356b4': '2026-11-05',
+  // EFRAÍN entró al Huper con el kiosco ya andando (Anuar, 6-nov-2026): su primer
+  // día medible es hoy. Lo anterior, si trabajó, se paga aparte.
+  'a5d6ab55-63f5-4903-be6c-0f87d4b584ba': '2026-11-06',
 }
 
 export const fechaBaja = personId => FECHAS_BAJA[personId] || null
