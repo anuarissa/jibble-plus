@@ -383,6 +383,9 @@ export const FECHAS_ALTA = {
   // EFRAÍN entró al Huper con el kiosco ya andando (Anuar, 6-nov-2026): su primer
   // día medible es hoy. Lo anterior, si trabajó, se paga aparte.
   'a5d6ab55-63f5-4903-be6c-0f87d4b584ba': '2026-11-06',
+  // JOSÉ CAYO entró el 9-nov-2026, mismo caso que Efraín: el kiosco ya estaba
+  // andando, así que su primer día medible es el día que se lo dio de alta.
+  '343023b5-b3dd-4760-95da-b138b3c4a457': '2026-11-09',
 }
 
 export const fechaBaja = personId => FECHAS_BAJA[personId] || null
