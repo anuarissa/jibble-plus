@@ -118,7 +118,7 @@ export const EMPLOYEE_OVERRIDES = {
   // historia es una sola. Sin el groupId caerían en SBARRO AMÉRICA, porque el
   // plan gratis de Jibble ya no deja asignar grupo.
   '51126b10-560a-4adc-8d28-f433ffb6b36e': { nombre: 'Nicolas Bernardo', groupId: GROUP_IDS.SOS_POLLO },   // PIN 1981
-  'f31b0ccb-d682-47fa-83e1-de277b8b5d18': { nombre: 'Carla', groupId: GROUP_IDS.SOS_POLLO },              // PIN 9861
+  'f31b0ccb-d682-47fa-83e1-de277b8b5d18': { nombre: 'Carla', groupId: GROUP_IDS.SOS_POLLO },              // PIN 6314 (cambiado 9-nov-2026: el 9861 lo sabía más gente)
   '7cb1a19f-7d44-4ba8-9f01-db9f4f202104': { nombre: 'Carlo', groupId: GROUP_IDS.SOS_POLLO },              // PIN 9027
   '7f291d7b-08a0-45b9-86bd-bbf6758acfc3': { nombre: 'Itai', groupId: GROUP_IDS.SOS_POLLO },               // PIN 2768
   '0b72580f-5905-4a1b-8a56-ce355ab5ef2c': { nombre: 'Wendy', groupId: GROUP_IDS.SOS_POLLO },              // PIN 4448
