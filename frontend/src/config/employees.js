@@ -125,6 +125,7 @@ export const EMPLOYEE_OVERRIDES = {
   'beca728d-ba8e-44f0-9b12-e9ff290f4248': { nombre: 'Yeico', groupId: GROUP_IDS.SOS_POLLO },              // PIN 5860
   'd7201535-41cc-4c21-8281-3b38b321558a': { nombre: 'Lorena', groupId: GROUP_IDS.SOS_POLLO },             // PIN 2295
   '66f3f810-4e1a-444f-981b-53be5311e78c': { nombre: 'Henry', groupId: GROUP_IDS.SOS_POLLO },              // PIN 8163
+  'bd875236-acb3-4f8f-8f68-8821accb115d': { nombre: 'Alejandro Marketing', groupId: GROUP_IDS.SOS_POLLO }, // PIN 9796 (alta 15-nov-2026, va al local a cumplir horas)
 }
 
 // Default schedule (para empleados full-time sin override).
@@ -386,6 +387,8 @@ export const FECHAS_ALTA = {
   // JOSÉ CAYO entró el 9-nov-2026, mismo caso que Efraín: el kiosco ya estaba
   // andando, así que su primer día medible es el día que se lo dio de alta.
   '343023b5-b3dd-4760-95da-b138b3c4a457': '2026-11-09',
+  // ALEJANDRO MARKETING (SOS POLLO) entró el 15-nov-2026 con el kiosco ya andando.
+  'bd875236-acb3-4f8f-8f68-8821accb115d': '2026-11-15',
 }
 
 export const fechaBaja = personId => FECHAS_BAJA[personId] || null
